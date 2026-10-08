@@ -2,6 +2,8 @@ site_name: Plano de Estudos OTCA
 site_description: Guia completo de 4 semanas para a certificação OpenTelemetry Certified Associate (OTCA)
 site_author: Plano OTCA
 site_url: https://souzadanrlei.github.io/Plano-de-estudos-OTCA/
+repo_url: https://github.com/souzadanrlei/Plano-de-estudos-OTCA
+repo_name: souzadanrlei/Plano-de-estudos-OTCA
 
 docs_dir: docs
 site_dir: _site
@@ -31,12 +33,12 @@ theme:
     - navigation.sections
     - navigation.top
     - navigation.footer
+    - navigation.indexes
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.code.annotate
     - toc.follow
-  icon:
-    repo: fontawesome/brands/github
 
 nav:
   - Início: README.md
@@ -84,4 +86,5 @@ plugins:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/
+      link: https://github.com/souzadanrlei/Plano-de-estudos-OTCA
+  generator: false
