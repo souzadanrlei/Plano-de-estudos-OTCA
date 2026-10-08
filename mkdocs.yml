@@ -2,7 +2,7 @@ site_name: Plano de Estudos OTCA
 site_description: Guia completo de 4 semanas para a certificação OpenTelemetry Certified Associate (OTCA)
 site_author: Plano OTCA
 # Ajuste para o seu usuário/repo do GitHub:
-site_url: https://SEU-USUARIO.github.io/SEU-REPO/
+site_url: https://github.com/souzadanrlei/Plano-de-estudos-OTCA
 
 # Os .md ficam na pasta otca-study-plan (irmã deste mkdocs.yml)
 docs_dir: otca-study-plan
