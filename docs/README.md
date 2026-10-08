@@ -1,25 +1,68 @@
 # Plano de Estudos OTCA
 
-Guia prático para você passar na certificação OpenTelemetry Certified Associate (OTCA) com foco em aprendizado progressivo, exercícios e labs reais.
+<div class="hero" data-animate="fade-up">
+  <div class="hero-grid">
+    <div>
+      <span class="kicker">Certificação OTCA</span>
+      <h2>Estude com método, prática e revisão contínua.</h2>
+      <p>
+        Este material foi organizado para transformar a teoria em rotina produtiva: você acompanha a jornada em 4 semanas,
+        valida conceitos com labs reais e reforça os pontos mais exigidos na prova.
+      </p>
+      <div class="hero-actions">
+        <a href="PLANO-28-DIAS.md" class="md-button md-button--primary">Ver cronograma</a>
+        <a href="00-ambiente/README.md" class="md-button">Preparar ambiente</a>
+      </div>
+      <div class="badge-row">
+        <span class="badge">4 semanas</span>
+        <span class="badge">Hands-on</span>
+        <span class="badge">Simulados</span>
+      </div>
+    </div>
+    <div class="progress-panel" data-animate="fade-up">
+      <strong>Fluxo recomendado</strong>
+      <div class="progress-steps">
+        <div class="progress-step" data-step="1">Teoria e conceitos</div>
+        <div class="progress-step" data-step="2">Labs práticos</div>
+        <div class="progress-step" data-step="3">Revisão ativa</div>
+        <div class="progress-step" data-step="4">Simulados</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 ## Visão geral
 
-Este repositório foi organizado para funcionar como um plano de estudo completo em 4 semanas, com teoria, prática, simulações e revisão ativa.
+Este repositório foi organizado para funcionar como um plano de estudo completo em 4 semanas, combinando teoria, prática, testes e revisão contínua.
 
 - Objetivo: preparar você para a certificação OTCA
-- Perfil: estudo auto-dirigido, com foco em observabilidade e OpenTelemetry
+- Perfil: estudo guiado e prático
 - Modelo: teoria + laboratórios + revisão + simulados
+
+<div class="feature-grid">
+  <div class="feature-card" data-animate="fade-up">
+    <div class="feature-icon">📘</div>
+    <h3>Estrutura clara</h3>
+    <p>Você acompanha uma jornada organizada por semana e por objetivo de estudo.</p>
+  </div>
+  <div class="feature-card" data-animate="fade-up">
+    <div class="feature-icon">🧪</div>
+    <h3>Laboratórios reais</h3>
+    <p>O ambiente com Docker, Prometheus, Jaeger e Grafana ajuda a validar o comportamento real da telemetria.</p>
+  </div>
+  <div class="feature-card" data-animate="fade-up">
+    <div class="feature-icon">✅</div>
+    <h3>Revisão ativa</h3>
+    <p>Flashcards e simulados ajudam a reforçar o que importa para a prova.</p>
+  </div>
+</div>
 
 ## O que você vai encontrar
 
-- [PLANO-28-DIAS.md](PLANO-28-DIAS.md): cronograma diário e checklist de estudo
-- [00-ambiente/README.md](00-ambiente/README.md): ambiente de labs com Docker, Prometheus, Jaeger e Grafana
-- [semana-1-fundamentos/README.md](semana-1-fundamentos/README.md): fundamentos de observabilidade
-- [semana-2-api-sdk/README.md](semana-2-api-sdk/README.md): API e SDK do OpenTelemetry
-- [semana-3-collector/README.md](semana-3-collector/README.md): Collector e pipelines
-- [semana-4-pipelines-revisao/README.md](semana-4-pipelines-revisao/README.md): debugging e revisão final
-- [Simulado 1](simulados/simulado-1.md), [Simulado 2](simulados/simulado-2.md), [Simulado 3](simulados/simulado-3.md): simulados e gabaritos
-- [recursos/README.md](recursos/README.md): flashcards, glossário e apêndice técnico
+- [Simulado 1](simulados/simulado-1.md), [Simulado 2](simulados/simulado-2.md), [Simulado 3](simulados/simulado-3.md)
+- [Plano 28 dias](PLANO-28-DIAS.md)
+- [Recursos e flashcards](recursos/README.md)
+- [Ambiente de labs](00-ambiente/README.md)
 
 ---
 
@@ -37,11 +80,11 @@ Reserve um tempo por dia e siga o checklist em [PLANO-28-DIAS.md](PLANO-28-DIAS.
 
 ### 3) Faça os labs
 
-Use a pasta [00-ambiente/README.md](00-ambiente/README.md) para validar conceitos com traces, métricas e visualização.
+Use a documentação da pasta [00-ambiente/README.md](00-ambiente/README.md) para validar conceitos com traces, métricas e visualização.
 
 ### 4) Revise com repetição espaçada
 
-Use [recursos/flashcards.md](recursos/flashcards.md) e os simulados para fixar os pontos de maior risco.
+Use [recursos/flashcards.md](recursos/flashcards.md) e os simulados para reforçar os pontos de maior risco.
 
 ---
 
@@ -60,15 +103,6 @@ Use [recursos/flashcards.md](recursos/flashcards.md) e os simulados para fixar o
 - 40 a 60 minutos de laboratório
 - 15 a 20 minutos de revisão
 - 10 minutos de anotações
-
----
-
-## Pré-requisitos
-
-- Docker + Docker Compose
-- Python 3.9+
-- `curl`
-- Editor de texto ou IDE
 
 ---
 
