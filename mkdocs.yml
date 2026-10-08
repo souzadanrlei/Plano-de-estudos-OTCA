@@ -1,0 +1,89 @@
+site_name: Plano de Estudos OTCA
+site_description: Guia completo de 4 semanas para a certificação OpenTelemetry Certified Associate (OTCA)
+site_author: Plano OTCA
+# Ajuste para o seu usuário/repo do GitHub:
+site_url: https://SEU-USUARIO.github.io/SEU-REPO/
+
+# Os .md ficam na pasta otca-study-plan (irmã deste mkdocs.yml)
+docs_dir: otca-study-plan
+site_dir: _site
+
+theme:
+  name: material
+  language: pt-BR
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Modo escuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Modo claro
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Início: README.md
+  - Plano 28 dias: PLANO-28-DIAS.md
+  - Ambiente de Labs: 00-ambiente/README.md
+  - Semanas:
+      - "Semana 1 — Fundamentos (18%)": semana-1-fundamentos/README.md
+      - "Semana 2 — API & SDK (46%)": semana-2-api-sdk/README.md
+      - "Semana 3 — Collector (26%)": semana-3-collector/README.md
+      - "Semana 4 — Pipelines & Revisão (10%)": semana-4-pipelines-revisao/README.md
+  - Simulados:
+      - "Simulado 1": simulados/simulado-1.md
+      - "Simulado 2": simulados/simulado-2.md
+      - "Simulado 3": simulados/simulado-3.md
+      - "Gabaritos": simulados/gabaritos.md
+  - Recursos:
+      - "Cheatsheets & Glossário": recursos/README.md
+      - "Flashcards": recursos/flashcards.md
+      - "Apêndice Técnico": recursos/apendice-tecnico.md
+  - Publicar o site: SITE.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search:
+      lang: pt
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/

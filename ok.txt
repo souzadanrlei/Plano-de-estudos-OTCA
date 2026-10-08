@@ -1,0 +1,1343 @@
+
+Sim. E dá para montar isso de uma forma bem mais útil do que simplesmente listar receiver → processor → exporter.
+
+Vou tratar o OpenTelemetry Collector como uma arquitetura completa, mostrando onde os componentes entram, o que cada camada pode fazer, como os sinais podem mudar de pipeline, onde ficam os controles de resiliência/segurança e quais são os principais componentes disponíveis atualmente.
+
+Consultei a documentação oficial atual: em 28 de agosto de 2026, a documentação do projeto referencia o Collector v0.159.0.
+
+🗺️ Mapa completo do OpenTelemetry Collector
+
+A visão que eu recomendo guardar mentalmente é esta:
+
+                                  ┌───────────────────────────────┐
+                                  │        TELEMETRY SOURCES      │
+                                  │                               │
+                                  │ Apps / SDKs / Agents          │
+                                  │ Kubernetes / VMs / Hosts      │
+                                  │ Prometheus / Logs / Kafka     │
+                                  │ Databases / Cloud / Network   │
+                                  └───────────────┬───────────────┘
+                                                  │
+                                                  ▼
+              ┌─────────────────────────────────────────────────────────────────────────────┐
+              │                              RECEIVERS                                      │
+              │                                                                             │
+              │ OTLP │ Prometheus │ Jaeger │ Zipkin │ Kafka │ Filelog │ Hostmetrics         │
+              │ Kubelet │ Kubernetes │ Syslog │ Fluent │ AWS │ Azure │ DB │ etc.            │
+              └────────────────────────────────┬────────────────────────────────────────────┘
+                                              │
+                                              ▼
+                                  ┌──────────────────────────┐
+                                  │       PIPELINE           │
+                                  │                          │
+                                  │   traces                 │
+                                  │   metrics                │
+                                  │   logs                   │
+                                  └────────────┬─────────────┘
+                                                │
+                                                ▼
+              ┌─────────────────────────────────────────────────────────────────────────────┐
+              │                             PROCESSORS                                      │
+              │                                                                             │
+              │ Memory Limiter │ Batch │ Attributes │ Resource │ Transform │ Filter         │
+              │ K8s Attributes │ Resource Detection │ Redaction │ Sampling │ Tail Sampling  │
+              │ Group By Trace │ Group By Attributes │ Metrics Transform │ Schema           │
+              │ Cardinality │ GeoIP │ Metric Generation │ etc.                              │
+              └────────────────────────────────┬────────────────────────────────────────────┘
+                                               │
+                                               ▼
+                                      ┌─────────────────┐
+                                      │    CONNECTOR    │
+                                      │                 │
+                                      │ pipeline A      │
+                                      │       │         │
+                                      │       ▼         │
+                                      │ pipeline B      │
+                                      └───────┬─────────┘
+                                              │
+                                  ┌────────────┴────────────┐
+                                  │                         │
+                                  ▼                         ▼
+                            PIPELINE B                 PIPELINE C
+                                  │                         │
+                                  ▼                         ▼
+                            PROCESSORS                 PROCESSORS
+                                  │                         │
+                                  └────────────┬────────────┘
+                                               │
+                                               ▼
+          ┌─────────────────────────────────────────────────────────────────────────────┐
+          │                              EXPORTERS                                      │
+          │                                                                             │
+          │ OTLP │ OTLP/HTTP │ Prometheus │ Remote Write │ Loki │ Kafka │ Jaeger        │
+          │ Splunk │ Datadog │ AWS │ Azure │ Google │ OpenSearch │ Debug │ etc.         │
+          └────────────────────────────────┬────────────────────────────────────────────┘
+                                           │
+                                           ▼
+          ┌─────────────────────────────────────────────────────────────────────────────┐
+          │                         OBSERVABILITY BACKENDS                              │
+          │                                                                             │
+          │ Grafana │ Prometheus │ Mimir │ Loki │ Tempo │ Jaeger │ Splunk │ Datadog     │
+          │ OpenSearch │ Elastic │ Cloud providers │ SIEM │ Data Lake │ etc.            │
+          └─────────────────────────────────────────────────────────────────────────────┘
+
+
+                      ┌─────────────────────────────────────────────┐
+                      │                 EXTENSIONS                  │
+                      │                                             │
+                      │ Health Check │ pprof │ zPages │ Auth        │
+                      │ File Storage │ OAuth │ AWS Auth │ Observer  │
+                      │ Service Discovery │ etc.                    │
+                      └─────────────────────────────────────────────┘
+                                              │
+                                              ▼
+                                        COLLECTOR RUNTIME
+
+A arquitetura oficial define exatamente os quatro componentes que manipulam telemetria — receivers, processors, exporters e connectors — enquanto extensions adicionam capacidades ao Collector que não ficam diretamente no fluxo da telemetria.
+
+1. Primeiro: o que entra no Collector?
+
+Antes de pensar em receiver, pense em sinais.
+
+O Collector trabalha principalmente com:
+
+                    OpenTelemetry
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+       TRACES         METRICS          LOGS
+          │              │              │
+          │              │              │
+       Spans          Metrics         Records
+
+E existe uma quarta área que está ganhando importância:
+
+                    PROFILES
+
+O ecossistema já possui componentes relacionados a profiles, mas traces, metrics e logs continuam sendo os três tipos de pipeline principais na configuração tradicional do Collector.
+
+2. RECEIVERS — de onde o dado entra
+
+O receiver é a porta de entrada.
+
+Ele pode:
+
+receber dados;
+escutar uma porta;
+fazer scrape;
+consumir arquivos;
+consultar APIs;
+consumir filas;
+coletar dados do host;
+coletar dados do Kubernetes;
+receber dados de outros sistemas.
+
+A documentação oficial define receivers justamente como componentes responsáveis por coletar telemetria de diferentes fontes e formatos.
+
+Principais famílias
+🔵 Protocolos de telemetria
+OTLP
+├── gRPC
+└── HTTP
+
+Jaeger
+├── gRPC
+└── Thrift
+
+Zipkin
+
+OpenCensus
+
+Prometheus
+
+Prometheus Remote Write
+
+O OTLP Receiver é particularmente importante porque suporta traces, metrics e logs e possui estabilidade stable nos três sinais na distribuição correspondente.
+
+🔵 Receivers de infraestrutura
+hostmetrics
+kubeletstats
+k8s_cluster
+k8sobjects
+k8sevents
+docker_stats
+podman_stats
+windowsperfcounters
+
+Por exemplo:
+
+VM
+ │
+ └── hostmetrics
+       │
+       ├── CPU
+       ├── Memory
+       ├── Disk
+       ├── Network
+       └── Load
+
+O hostmetrics é especialmente utilizado quando o Collector funciona como agent.
+
+3. Receivers de logs
+
+Aqui começa a ficar muito interessante.
+
+                    LOG SOURCES
+                        │
+        ┌───────────────┼────────────────┐
+        ▼               ▼                ▼
+      Filelog         Journald          Kafka
+        │               │                │
+        └───────────────┼────────────────┘
+                        ▼
+                  OTel Collector
+
+Exemplos:
+
+filelog
+journald
+syslog
+fluentforward
+kafka
+loki
+eventlog
+
+Isso permite transformar:
+
+arquivo
+   ↓
+receiver
+   ↓
+OTel LogRecord
+
+e depois aplicar processors normalmente.
+
+4. Receivers de Kubernetes
+
+Para o seu cenário, essa parte é especialmente importante.
+
+Você pode pensar em:
+
+Kubernetes
+     │
+     ├── kubeletstats
+     │
+     ├── k8s_cluster
+     │
+     ├── k8sobjects
+     │
+     ├── k8sevents
+     │
+     └── filelog
+
+Então você pode coletar:
+
+Cluster
+ ├── Nodes
+ ├── Pods
+ ├── Containers
+ ├── Deployments
+ ├── Events
+ ├── Kubelet
+ └── Logs
+
+A lista atual do Collector inclui, entre outros, kubernetes_cluster, kubernetes_events, kubernetes_objects e kubeletstats.
+
+5. PROCESSORS — onde começa a verdadeira engenharia
+
+Aqui está a camada que você mencionou.
+
+É onde você pode pegar:
+
+telemetria bruta
+       ↓
+   PROCESSORS
+       ↓
+telemetria enriquecida,
+filtrada, transformada,
+amostrada e otimizada
+
+A documentação atual lista dezenas de processors, incluindo transform, attributes, resource, batch, memory_limiter, kubernetesattributes, resourcedetection, tail_sampling, filter, redaction, entre outros.
+
+Eu dividiria mentalmente os processors em 9 grupos.
+
+6. PROCESSORS — Performance e estabilidade
+memory_limiter
+
+Protege o Collector contra consumo excessivo de memória.
+
+Incoming telemetry
+        │
+        ▼
+ memory_limiter
+        │
+        ▼
+ pipeline
+
+É um dos processors fundamentais para ambientes de produção.
+
+batch
+
+Agrupa dados.
+
+Span
+Span
+Span
+Span
+Span
+ ↓
+BATCH
+ ↓
+[Span Span Span Span]
+ ↓
+Exporter
+
+Isso reduz overhead de rede e melhora throughput.
+
+queue_batch
+
+Existe também a abordagem de queue/batching, particularmente relevante para desacoplar ingestão e exportação.
+
+7. PROCESSORS — Enriquecimento
+
+Aqui temos:
+
+attributes
+resource
+k8sattributes
+resourcedetection
+Attributes
+
+Manipula atributos:
+
+attributes:
+  environment = production
+  team = payments
+  region = sp
+
+Pode:
+
+INSERT
+UPDATE
+UPSERT
+DELETE
+HASH
+EXTRACT
+8. Resource Processor
+
+Esse é fundamental para entender OpenTelemetry.
+
+Você pode manipular:
+
+resource.attributes
+
+Exemplo:
+
+service.name
+service.namespace
+service.version
+deployment.environment
+cloud.provider
+cloud.region
+k8s.cluster.name
+
+Mentalmente:
+
+                 TELEMETRY
+                     │
+                     ▼
+              ┌─────────────┐
+              │   RESOURCE  │
+              └─────────────┘
+                     │
+          ┌──────────┼──────────┐
+          ▼          ▼          ▼
+       service      cloud       k8s
+9. Kubernetes Attributes Processor
+
+Esse é um dos mais poderosos em Kubernetes.
+
+Imagine:
+
+Pod
+ │
+ ├── IP
+ ├── namespace
+ ├── deployment
+ ├── pod name
+ ├── container
+ └── node
+
+O processor pode enriquecer a telemetria com metadata Kubernetes.
+
+Resultado:
+
+trace
+ │
+ ├── service.name
+ ├── k8s.namespace.name
+ ├── k8s.pod.name
+ ├── k8s.container.name
+ ├── k8s.node.name
+ └── ...
+10. Resource Detection
+
+Descobre informações do ambiente.
+
+Por exemplo:
+
+AWS
+Azure
+GCP
+Kubernetes
+Host
+Container
+
+E adiciona contexto ao resource.
+
+11. TRANSFORM — uma das áreas mais importantes
+
+Aqui chegamos exatamente ao seu exemplo.
+
+O:
+
+transformprocessor
+
+permite modificar a telemetria usando OTTL — OpenTelemetry Transformation Language.
+
+Visualmente:
+
+Receiver
+   │
+   ▼
+Transform Processor
+   │
+   ├── rename
+   ├── set
+   ├── delete
+   ├── copy
+   ├── convert
+   ├── conditions
+   ├── statements
+   └── complex transformations
+   │
+   ▼
+Exporter
+
+Então você pode fazer coisas como:
+
+if attributes["environment"] == "prod"
+    then ...
+
+ou transformar:
+
+attributes["old.name"]
+          ↓
+attributes["new.name"]
+
+O transform atualmente suporta traces, metrics e logs e está listado como beta nessas três áreas.
+
+12. FILTER
+
+Você pode decidir:
+
+Esse dado entra ou não entra?
+
+                    telemetry
+                        │
+                        ▼
+                     FILTER
+                    /      \
+                   /        \
+                  ▼          ▼
+               KEEP        DROP
+
+Exemplo conceitual:
+
+environment == "dev"
+        ↓
+DROP
+
+ou:
+
+service.name == "pagmon"
+        ↓
+KEEP
+13. REDACTION
+
+Extremamente importante em ambientes corporativos.
+
+Você pode remover/redigir informações sensíveis:
+
+CPF
+TOKEN
+PASSWORD
+EMAIL
+CARD
+PII
+
+Fluxo:
+
+Logs
+ │
+ ▼
+Redaction
+ │
+ ├── detect sensitive data
+ ├── redact
+ └── sanitize
+ │
+ ▼
+Backend
+14. SAMPLING
+
+Aqui existem duas ideias diferentes.
+
+Probabilistic Sampling
+100.000 traces
+       │
+       ▼
+ probabilistic
+       │
+       ▼
+  10.000 traces
+
+Baseado em probabilidade.
+
+15. Tail Sampling
+
+Muito mais interessante.
+
+O Collector espera informações suficientes da trace antes de decidir.
+
+              TRACE
+                │
+       ┌────────┼────────┐
+       │        │        │
+     Span     Span      Span
+       │        │        │
+       └────────┼────────┘
+                ▼
+          TAIL SAMPLING
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+      KEEP              DROP
+
+Por exemplo:
+
+if:
+  status == ERROR
+  → KEEP
+
+if:
+  latency > 2s
+  → KEEP
+
+if:
+  service == payment
+  → KEEP
+
+else
+  → DROP
+
+É uma ferramenta extremamente poderosa para reduzir custo sem simplesmente jogar fora traces importantes.
+
+16. Group by Trace
+
+Permite agrupar dados por trace.
+
+Span A ─┐
+Span B ─┼──► Group by Trace
+Span C ─┘
+             │
+             ▼
+          Trace group
+
+Isso é particularmente relevante para arquiteturas avançadas de sampling e processamento.
+
+17. Group by Attributes
+
+Agrupa telemetria por atributos.
+
+Por exemplo:
+
+tenant
+service
+region
+environment
+customer
+18. METRICS PROCESSING
+
+Existe uma família específica para métricas.
+
+Metrics
+   │
+   ├── metrics transform
+   ├── metric start time
+   ├── cumulative → delta
+   ├── delta → cumulative
+   ├── delta → rate
+   ├── metrics generation
+   └── cardinality control
+
+Isso permite construir pipelines de métricas muito sofisticados.
+
+19. Cardinalidade
+
+Esse é um dos pontos que eu colocaria como área crítica de observabilidade.
+
+Imagine:
+
+http_requests_total
+
+com:
+
+service
+pod
+container
+namespace
+customer_id
+request_id
+session_id
+trace_id
+
+A cardinalidade explode.
+
+Então:
+
+              METRICS
+                 │
+                 ▼
+        CARDINALITY CONTROL
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+     SAFE               DROP
+
+A versão atual possui inclusive cardinalityguardianprocessor, voltado especificamente para esse problema.
+
+20. CONNECTORS — a parte que muita gente não entende
+
+Aqui muda completamente o desenho.
+
+Um Connector:
+
+é simultaneamente um exporter + receiver.
+
+A documentação oficial descreve exatamente dessa forma.
+
+Então:
+
+PIPELINE A
+     │
+     ▼
+ Processor
+     │
+     ▼
+ Connector
+     │
+     │  ← exporter
+     │
+     ▼
+ Connector
+     │
+     │  ← receiver
+     ▼
+PIPELINE B
+
+Isso permite conectar pipelines diferentes.
+
+21. O poder dos Connectors
+
+Imagine:
+ 
+TRACES
+  │
+  ▼
+spanmetrics connector
+  │
+  └──────────────► METRICS
+                       │
+                       ▼
+                    Prometheus
+
+Ou:
+
+TRACES
+  │
+  ▼
+servicegraph
+  │
+  ▼
+METRICS
+
+Ou:
+
+TRACES
+  │
+  ▼
+count
+  │
+  ▼
+METRICS
+
+Ou:
+
+Pipeline A
+   │
+   ▼
+routing connector
+   │
+   ├────────► Pipeline B
+   │
+   ├────────► Pipeline C
+   │
+   └────────► Pipeline D
+22. Connectors atuais importantes
+
+A documentação atual lista:
+
+count
+datadog
+exceptions
+failover
+forward
+grafana_cloud
+metrics_as_logs
+otlp_json
+round_robin
+routing
+servicegraph
+signaltometrics
+slow_sql
+spanmetrics
+sum
+
+Eu dividiria assim:
+
+🔄 Routing
+routing connector
+
+Decide para qual pipeline enviar.
+
+📊 Generation
+spanmetrics
+servicegraph
+count
+sum
+signaltometrics
+
+Transformam/derivam sinais.
+
+🛡️ Resiliência
+failover
+
+Permite estratégias de fallback.
+
+🔀 Distribuição
+round_robin
+forward
+23. O conceito mais poderoso: mudança de sinal
+
+Não pense:
+
+traces → traces
+
+Pense:
+
+                  CONNECTOR
+                     │
+        ┌────────────┼────────────┐
+        ▼            ▼            ▼
+      traces       metrics       logs
+        │            │            │
+        └────────────┼────────────┘
+                     ▼
+                  pipelines
+
+Por exemplo:
+
+TRACES
+   │
+   ▼
+Span Metrics Connector
+   │
+   ▼
+METRICS
+   │
+   ▼
+Prometheus / Mimir
+
+Isso é uma das características mais interessantes da arquitetura do Collector.
+
+24. EXPORTERS
+
+Finalmente:
+
+                    EXPORTER
+                       │
+          ┌────────────┼─────────────┐
+          ▼            ▼             ▼
+        OTLP       Prometheus       Kafka
+          │            │             │
+          ▼            ▼             ▼
+        Tempo        Mimir          Queue
+
+Exporters enviam a telemetria para destinos externos.
+
+25. Exporter OTLP
+
+Provavelmente o mais importante para uma arquitetura OTel moderna.
+
+Collector
+    │
+    ▼
+OTLP gRPC
+    │
+    ▼
+Collector Gateway
+
+ou:
+
+Collector
+    │
+    ▼
+OTLP HTTP
+    │
+    ▼
+Backend
+
+Os exporters OTLP gRPC e OTLP HTTP estão atualmente como stable para traces, metrics e logs.
+
+26. Exporters específicos
+
+O ecossistema atual possui exporters para diversos destinos:
+
+Prometheus
+Prometheus Remote Write
+Loki
+Kafka
+Jaeger
+Zipkin
+OpenSearch
+Splunk HEC
+Datadog
+AWS
+Azure
+Google Cloud
+Sentry
+Syslog
+Sumo Logic
+
+e muitos outros.
+
+27. EXTENSIONS — não ficam dentro da pipeline
+
+Essa distinção é muito importante.
+
+Você tem:
+
+PIPELINE
+────────────────────────────
+Receiver
+   ↓
+Processor 
+   ↓
+Connector
+   ↓
+Exporter
+────────────────────────────
+
+E fora dela:
+
+        EXTENSIONS
+             │
+   ┌─────────┼─────────┐
+   ▼         ▼         ▼
+Health      pprof     zPages
+Check
+
+Extensions não processam diretamente a telemetria como processors.
+
+Elas dão capacidades ao Collector.
+
+28. Health Check
+
+Permite verificar:
+
+Collector está vivo?
+
+Por exemplo:
+
+/liveness
+
+ou endpoint de health.
+
+Muito importante para:
+
+Kubernetes
+Docker
+Load Balancer
+Readiness/Liveness
+29. pprof
+
+Para investigação de performance:
+
+CPU
+Memory
+Goroutines
+Heap
+Profiles
+
+Extremamente útil quando o Collector começa a consumir recursos demais.
+
+30. zPages
+
+Ajuda a diagnosticar o próprio Collector.
+
+Collector
+   │
+   └── zPages
+         │
+         ├── pipelines
+         ├── spans
+         └── internal state
+31. Storage Extension
+
+Outra área extremamente importante para produção.
+
+Você pode utilizar armazenamento para mecanismos de persistência/resiliência de componentes.
+
+Conceitualmente:
+
+             Collector
+                 │
+          ┌──────┴──────┐
+          │             │
+       Memory         Storage
+          │             │
+          │          disk/file
+          │
+          ▼
+       process
+
+Isso fica especialmente interessante quando pensamos em:
+
+Collector restart
+Exporter unavailable
+Network failure
+Backend outage
+32. AUTHENTICATION
+
+Extensions também podem fornecer mecanismos de autenticação.
+
+Por exemplo:
+
+Basic Auth
+Bearer Token
+OAuth2
+AWS authentication
+Azure authentication
+
+O modelo é:
+
+Receiver
+   │
+   ▼
+Authentication
+   │
+   ▼
+Pipeline
+
+ou aplicado no lado do exporter, dependendo do componente.
+
+33. O Collector inteiro pode ser pensado como 3 planos
+
+Essa é uma forma que eu recomendo para você estudar.
+
+DATA PLANE
+RECEIVER
+   ↓
+PROCESSOR
+   ↓
+CONNECTOR
+   ↓
+PROCESSOR
+   ↓
+EXPORTER
+
+É o fluxo da telemetria.
+
+CONTROL / SERVICE PLANE
+Extensions
+   │
+   ├── Health
+   ├── Auth
+   ├── Discovery
+   ├── Storage
+   ├── Diagnostics
+   └── Runtime
+CONFIGURATION PLANE
+config.yaml
+      │
+      ▼
+Components
+      │
+      ▼
+service:
+  extensions
+  pipelines
+  telemetry
+34. E finalmente temos o service
+
+Essa parte é importantíssima.
+
+Você pode declarar 50 componentes:
+
+receivers:
+processors:
+exporters:
+connectors:
+extensions:
+
+Mas eles não estão necessariamente ativos.
+
+Quem liga os componentes é:
+
+service:
+
+A própria documentação destaca que configurar um componente não significa habilitá-lo; ele precisa ser referenciado no service.
+
+35. Um Collector real
+
+Agora olha esse exemplo:
+
+receivers:
+
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: applications
+
+  filelog:
+    include:
+      - /var/log/*.log
+
+
+processors:
+
+  memory_limiter:
+
+  k8sattributes:
+
+  resourcedetection:
+
+  transform:
+
+  filter:
+
+  tail_sampling:
+
+  batch:
+
+
+connectors:
+
+  spanmetrics:
+
+  servicegraph:
+
+  routing:
+
+
+exporters:
+
+  otlp:
+    endpoint: tempo:4317
+
+  prometheusremotewrite:
+    endpoint: http://mimir/api/v1/push
+
+  debug:
+
+
+extensions:
+
+  health_check:
+
+  pprof:
+
+  zpages:
+
+E então:
+
+service:
+
+  extensions:
+    - health_check
+    - pprof
+    - zpages
+
+  pipelines:
+
+    traces:
+      receivers:
+        - otlp
+
+      processors:
+        - memory_limiter
+        - k8sattributes
+        - resourcedetection
+        - transform
+        - tail_sampling
+        - batch
+
+      exporters:
+        - spanmetrics
+        - servicegraph
+        - otlp
+
+
+    metrics:
+      receivers:
+        - prometheus
+        - spanmetrics
+        - servicegraph
+
+      processors:
+        - memory_limiter
+        - transform
+        - batch
+
+      exporters:
+        - prometheusremotewrite
+
+
+    logs:
+      receivers:
+        - otlp
+        - filelog
+
+      processors:
+        - memory_limiter
+        - k8sattributes
+        - transform
+        - filter
+        - batch
+
+      exporters:
+        - otlp
+
+Olha o que acabamos de criar:
+
+                         ┌───────────────┐
+                         │      OTLP     │
+                         └───────┬───────┘
+                                 │
+                                 ▼
+                      ┌────────────────────┐
+                      │      TRACES        │
+                      │                    │
+                      │ memory_limiter     │
+                      │ k8sattributes      │
+                      │ resourcedetection  │
+                      │ transform          │
+                      │ tail_sampling      │
+                      │ batch              │
+                      └─────────┬──────────┘
+                                │
+                ┌───────────────┼────────────────┐
+                ▼               ▼                ▼
+          Span Metrics     Service Graph        OTLP
+                │               │                 │ 
+                ▼               ▼                 ▼
+             METRICS         METRICS            Tempo
+                │               │
+                └───────┬───────┘
+                        ▼
+                    MIMIR
+
+
+ Logs ──► processors ──► OTLP ──► Loki
+
+Esse é o ponto em que o Collector deixa de ser simplesmente "um agente OTLP" e passa a ser uma plataforma de engenharia de observabilidade.
+
+36. Agent vs Gateway
+
+Outra camada que você precisa colocar nesse mapa.
+
+Agent
+
+Fica próximo da aplicação/host:
+
+Application
+    │
+    ▼
+OTel Agent
+    │
+    ▼
+Gateway
+
+Pode coletar:
+
+host metrics
+logs
+OTLP
+Kubernetes
+Gateway
+
+Fica centralizado:
+
+Agent 1 ─┐
+Agent 2 ─┤
+Agent 3 ─┼──► OTel Gateway ───► Backends
+Agent N ─┘
+
+E o gateway pode fazer:
+
+aggregation
+sampling
+routing
+security
+normalization
+filtering
+batching
+fan-out
+
+A arquitetura oficial documenta justamente os modelos de execução agent e gateway.
+
+ 
+
+E paralelo a tudo isso:
+
+                         EXTENSIONS
+                              │
+       ┌──────────────┬───────┼─────────┬─────────────┐
+       ▼              ▼       ▼         ▼             ▼
+    Health          pprof   zPages    Auth         Storage
+38. A camada que eu considero mais importante para você
+
+Pelo tipo de arquitetura que você está trabalhando com Grafana + Prometheus + Kubernetes + OTLP, eu não estudaria simplesmente "todos os componentes".
+
+Eu montaria uma trilha de domínio:
+
+Nível 1 — Fundamentos
+OTLP
+Traces
+Metrics
+Logs
+Resources
+Attributes
+Semantic Conventions
+
+↓
+
+Nível 2 — Collector
+Receiver
+Pipeline
+Processor
+Exporter
+
+↓
+
+Nível 3 — Processamento
+attributes
+resource
+k8sattributes
+resourcedetection
+transform / OTTL
+filter
+redaction
+batch
+memory_limiter
+
+↓
+
+Nível 4 — Sampling
+probabilistic sampling
+tail sampling
+group by trace
+
+↓
+
+Nível 5 — Connectors
+spanmetrics
+servicegraph
+routing
+count
+sum
+failover
+
+↓
+
+Nível 6 — Kubernetes
+kubeletstats
+k8scluster
+k8sobjects
+k8sevents
+filelog
+k8sattributes
+
+↓
+
+Nível 7 — Resiliência
+queue
+batch
+retry
+storage
+memory limiter
+failover
+
+↓
+
+Nível 8 — Segurança
+TLS
+mTLS
+Authentication
+Authorization
+Redaction
+Secrets
+
+↓
+
+Nível 9 — Performance
+CPU
+Memory
+Throughput
+Batch
+Queue
+Concurrency
+Cardinality
+Sampling
+Backpressure
+
+↓
+
+Nível 10 — Arquitetura
+Agent
+       ↓
+Gateway
+       ↓
+Routing
+       ↓
+Processing
+       ↓
+Backend
+📌 Uma observação importante sobre "todos os componentes"
+
+O ecossistema atual é muito maior que o otelcol core. O Explorer oficial atualmente mostra uma grande quantidade de componentes de receivers e demais componentes, distribuídos entre core, contrib, Kubernetes e outras distribuições.
+
+Por isso, "mapa completo" pode significar duas coisas diferentes:
+
+Mapa arquitetural completo — que é o que montei acima: todas as camadas, relações e possibilidades.
+Catálogo de componentes — literalmente cada receiver, processor, connector, exporter e extension existente no v0.159.0, com nome, finalidade, sinal suportado, estabilidade, distribuição e exemplo de uso.
+
+Para o que você está querendo estudar, o segundo formato é provavelmente o próximo passo ideal: uma espécie de "OpenTelemetry Collector Knowledge Map", organizado em árvore, onde eu colocaria todos os processors atuais (incluindo Transform/OTTL), todos os connectors, receivers, exporters e extensions, e ainda marcaria Core / Contrib / K8s / Alpha / Beta / Stable / Deprecated. A documentação oficial mantém justamente essas informações por componente.
+
+Se você quiser usar isso como material de estudo/documentação interna, eu também consigo transformar esse mapa em um diagrama visual gigante do OpenTelemetry Collector, mostrando os caminhos OTLP → Receiver → Processors → Connectors → Pipelines → Exporters → Grafana/Prometheus/Loki/Tempo, incluindo as possibilidades de branching e mudança de sinal.
