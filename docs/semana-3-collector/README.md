@@ -24,3 +24,9 @@ Dominar a arquitetura do Collector, seu papel como agente de coleta e processame
 - [ ] Entender pipeline receiver → processor → exporter
 - [ ] Validar métricas no Prometheus e visualização no Grafana
 - [ ] Testar fluxos de erro e análise de dados
+
+---
+
+## Conteúdo completo para estudar
+
+--8<-- "semana-3-collector/README.md"

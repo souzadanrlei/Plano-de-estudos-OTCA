@@ -69,6 +69,8 @@ markdown_extensions:
   - toc:
       permalink: true
   - pymdownx.details
+  - pymdownx.snippets:
+      base_path: .
   - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true

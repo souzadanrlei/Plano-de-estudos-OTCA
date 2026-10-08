@@ -23,3 +23,9 @@ Entender os pilares da observabilidade e como os sinais de telemetry se encaixam
 - [ ] Entender sinais e dados de telemetry
 - [ ] Validar o fluxo de trace do ambiente de exemplo
 - [ ] Resolver os exercícios e simulados da semana
+
+---
+
+## Conteúdo completo para estudar
+
+--8<-- "semana-1-fundamentos/README.md"

@@ -24,3 +24,9 @@ Compreender a arquitetura da API e do SDK, o modelo de dados, propagação de co
 - [ ] Revisar context propagation
 - [ ] Identificar diferenças entre sinais
 - [ ] Praticar com a aplicação de exemplo
+
+---
+
+## Conteúdo completo para estudar
+
+--8<-- "semana-2-api-sdk/README.md"

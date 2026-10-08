@@ -11,6 +11,53 @@
 - Context Propagation
 - Agents
 
+### Mapa mental da semana
+
+Se a prova te perguntasse: "o que faz cada peça do SDK do OpenTelemetry?", a resposta curta é esta:
+
+```text
+Application code
+      │
+      ├── API: describe intent ("quero um span", "quero uma métrica")
+      │
+      └── SDK: decide como collect / sample / export / batch / propagate
+               │
+               ├── Sampler → decide se o trace entra ou não
+               ├── SpanProcessor → observa onStart/onEnd
+               ├── Exporter → envia para OTLP/Console/Backend
+               ├── MetricReader → coleta dados de métricas
+               └── Propagator → serializa contexto entre processos
+```
+
+> **Regra de ouro:** a API é o “contrato”. O SDK é a “máquina que resolve a entrega”.
+
+### 3 regras de ouro para memorizar
+
+1. **API sem SDK = no-op**. O código não quebra, mas também não emite telemetria.
+2. **TraceContext é o padrão**. Se o header `traceparent` não passa, o sistema perde a continuidade do trace.
+3. **Padrão de produção é Batch**. `batch` é mais eficiente do que `simple` em ambientes reais.
+
+### Mini flashcards de revisão
+
+- **Q:** O que o `TracerProvider` faz?  
+  **A:** Cria tracers e define o pipeline de spans, resource e processamento do trace.
+
+- **Q:** Qual a diferença entre `inject` e `extract`?  
+  **A:** `inject` escreve o contexto no carrier; `extract` lê de volta no outro processo.
+
+- **Q:** Por que `ParentBased` é tão importante?  
+  **A:** Porque ele evita traces quebrados e mantém consistência de amostragem.
+
+- **Q:** Qual reader geralmente entra no Prometheus?  
+  **A:** O `Pull` / Prometheus reader, que expõe `/metrics` para scrape.
+
+### Armadilha da prova mais comum
+
+- **“Baggage não é sinal.”**
+- **“ParentBased root default é AlwaysOn.”**
+- **“BatchSpanProcessor não é só otimização; ele também reduz overhead de export.”**
+- **“View pode mudar a cardinalidade e a agregação sem mexer no código da app.”**
+
 ### Cronograma da semana
 | Dia | Tema | Lab |
 |---|---|---|

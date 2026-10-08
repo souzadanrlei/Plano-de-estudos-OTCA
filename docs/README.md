@@ -10,8 +10,8 @@
         valida conceitos com labs reais e reforça os pontos mais exigidos na prova.
       </p>
       <div class="hero-actions">
-        <a href="PLANO-28-DIAS.md" class="md-button md-button--primary">Ver cronograma</a>
-        <a href="00-ambiente/README.md" class="md-button">Preparar ambiente</a>
+        <a href="semana-1-fundamentos/README.md" class="md-button md-button--primary">Começar pela semana 1</a>
+        <a href="PLANO-28-DIAS.md" class="md-button">Ver cronograma completo</a>
       </div>
       <div class="badge-row">
         <span class="badge">4 semanas</span>
@@ -30,6 +30,35 @@
     </div>
   </div>
 </div>
+
+## Trilha completa de estudo
+
+Se a dúvida é “por onde começar?”, siga esta ordem do primeiro ao último passo:
+
+<div class="feature-grid">
+  <div class="feature-card" data-animate="fade-up">
+    <div class="feature-icon">1️⃣</div>
+    <h3><a href="semana-1-fundamentos/README.md">Semana 1 — Fundamentos</a></h3>
+    <p>Entenda observabilidade, sinais, contexto, spans e os princípios que sustentam o resto da trilha.</p>
+  </div>
+  <div class="feature-card" data-animate="fade-up">
+    <div class="feature-icon">2️⃣</div>
+    <h3><a href="semana-2-api-sdk/README.md">Semana 2 — API & SDK</a></h3>
+    <p>Veja como a API, SDK, samplers, propagadores e métricas funcionam na prática.</p>
+  </div>
+  <div class="feature-card" data-animate="fade-up">
+    <div class="feature-icon">3️⃣</div>
+    <h3><a href="semana-3-collector/README.md">Semana 3 — Collector</a></h3>
+    <p>Aprenda pipelines, processors, exporters, deploy e arquitetura para coleta e transformação de dados.</p>
+  </div>
+  <div class="feature-card" data-animate="fade-up">
+    <div class="feature-icon">4️⃣</div>
+    <h3><a href="semana-4-pipelines-revisao/README.md">Semana 4 — Revisão e pipelines</a></h3>
+    <p>Feche a trilha com revisão, troubleshooting, comparações de arquitetura e simulados.</p>
+  </div>
+</div>
+
+> ✅ Caminho recomendado: comece em [Semana 1](semana-1-fundamentos/README.md), siga em ordem e finalize com [Simulados](simulados/simulado-1.md).
 
 ## Visão geral
 
@@ -70,9 +99,19 @@ Este repositório foi organizado para funcionar como um plano de estudo completo
 
 ### 1) Prepare o ambiente
 
+Antes de qualquer conteúdo mais avançado, melhor subir a stack de laboratório:
+
 ```bash
 docker compose -f 00-ambiente/docker-compose.yaml up -d
 ```
+
+Depois, siga a ordem abaixo:
+
+1. [Semana 1 — Fundamentos](semana-1-fundamentos/README.md)
+2. [Semana 2 — API & SDK](semana-2-api-sdk/README.md)
+3. [Semana 3 — Collector](semana-3-collector/README.md)
+4. [Semana 4 — Revisão e pipelines](semana-4-pipelines-revisao/README.md)
+5. [Simulados](simulados/simulado-1.md)
 
 ### 2) Siga o planejamento
 
@@ -120,7 +159,7 @@ Use [recursos/flashcards.md](recursos/flashcards.md) e os simulados para reforç
 
 A maior parte da prova não é sobre memorizar comandos; é sobre entender o fluxo de dados e a arquitetura. Foque em raciocínio, contexto e diagnóstico.
 
-Comece por aqui: [Semana 1 — Fundamentos](semana-1-fundamentos/README.md)
+Se quiser um começo objetivo, clique em [Semana 1 — Fundamentos](semana-1-fundamentos/README.md). Se quiser ver a jornada completa primeiro, abra [PLANO-28-DIAS.md](PLANO-28-DIAS.md).
 
 ---
 
