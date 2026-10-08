@@ -1,250 +1,359 @@
-# Semana 1 — Fundamentals of Observability (18%)
+# Semana 2 — The OpenTelemetry API and SDK (46%)
 
-> Objetivo da semana: entender **o que** é observabilidade, **quais** são os sinais de telemetria, **como** eles são padronizados (semantic conventions) e **como** a aplicação é instrumentada. Base conceitual para todo o resto.
+> **Este é o domínio mais importante da prova — quase metade das questões.** Dedique a semana inteira. O foco é entender a separação **API vs SDK**, o data model, os três sinais no nível de SDK, as **pipelines de processamento**, **propagação de contexto** e **configuração**.
 
 ### Competências cobradas
-- Telemetry Data
-- Semantic Conventions
-- Instrumentation
-- Analysis and Outcomes
+- Data Model
+- Composability and Extension
+- Configuration
+- Signals (Tracing, Metric, Log)
+- SDK Pipelines
+- Context Propagation
+- Agents
 
 ### Cronograma da semana
 | Dia | Tema | Lab |
 |---|---|---|
-| 1 | Observabilidade vs Monitoramento; por que OpenTelemetry | — |
-| 2 | Os sinais: traces, metrics, logs, profiles (+ baggage como contexto) | Lab 1.1 |
-| 3 | Semantic Conventions e Resource | Lab 1.2 |
-| 4 | Instrumentação: manual, biblioteca, zero-code/auto | Lab 1.3 |
-| 5 | Analysis & Outcomes: do dado à decisão | Lab 1.4 |
-| 6 | Revisão + Quiz da Semana 1 | Quiz |
+| 1 | API vs SDK; composability; data model | Lab 2.1 |
+| 2 | Tracing: TracerProvider → pipeline → exporter | Lab 2.2 |
+| 3 | Sampling (head-based) e Span Processors | Lab 2.3 |
+| 4 | Metrics: MeterProvider, views, readers, exporters | Lab 2.4 |
+| 5 | Logs: LoggerProvider; Context Propagation | Lab 2.5 |
+| 6 | Configuration + Agents + Revisão + Quiz | Quiz |
 
 ---
 
-## Dia 1 — O que é observabilidade
+## Dia 1 — API vs SDK (a distinção mais cobrada)
 
-**Monitoramento** responde a perguntas que você já sabia fazer ("a CPU passou de 80%?"). **Observabilidade** é a capacidade de entender o estado interno de um sistema a partir dos seus dados de saída (telemetria), permitindo responder perguntas que você **não** antecipou ("por que *esse* usuário específico teve 3s de latência às 14h07?").
+**API** e **SDK** são separados **de propósito**:
 
-**OpenTelemetry (OTel)** é um projeto da CNCF que fornece um **padrão aberto e vendor-neutral** para gerar, coletar e exportar telemetria. Resolve o problema do *vendor lock-in*: você instrumenta uma vez e exporta para qualquer backend (Jaeger, Prometheus, Grafana, Datadog, etc.).
+| | API | SDK |
+|---|---|---|
+| O que é | Interface/contrato | Implementação concreta |
+| Quem usa | Código da aplicação **e bibliotecas** | A aplicação (no startup) |
+| Se não configurado | Vira **no-op** (não quebra) | — |
+| Decide | *o que* medir | *como* processar/exportar/amostrar |
 
-Componentes do projeto OTel:
-- **Especificação** (specification) — define o comportamento de API, SDK e data model.
-- **APIs** — interface que o código da aplicação usa para gerar telemetria.
-- **SDKs** — implementação concreta da API (amostragem, processamento, exportação).
-- **Collector** — binário standalone que recebe, processa e exporta telemetria.
-- **OTLP** — OpenTelemetry Protocol, o protocolo de transporte da telemetria.
-- **Semantic Conventions** — nomes padronizados de atributos.
-- **Instrumentation libraries** — bibliotecas prontas para frameworks populares.
+Ponto-chave: uma **biblioteca** instrumentada depende **só da API**. Se a aplicação final não instalar/configurar o SDK, a API é **no-op** (não gera telemetria, mas também não quebra nada). Isso permite instrumentar bibliotecas sem forçar overhead a quem não quer telemetria.
 
-Pilares vs sinais: o termo clássico "3 pilares" (logs, metrics, traces) é incompleto no OTel. Os **sinais (signals)** de telemetria são: **traces, metrics, logs** e **profiles** (sinal mais recente). O diferencial do OTel é **correlacionar** os sinais (ex.: pular de uma métrica anômala para o trace exato).
+### Providers (ponto de entrada de cada sinal)
+- **TracerProvider** → cria `Tracer`s → criam `Span`s
+- **MeterProvider** → cria `Meter`s → criam instrumentos (Counter, etc.)
+- **LoggerProvider** → cria `Logger`s → emitem `LogRecord`s
 
-> ⚠️ **Pegadinha de prova:** o **baggage NÃO é um sinal**. Baggage é um mecanismo de **propagação de contexto** (cross-cutting concern), estudado junto com propagação na Semana 2. Se uma questão listar "baggage" como sinal de telemetria, está errada. Sinais = traces, metrics, logs, profiles.
+A aplicação configura os Providers (SDK) **uma vez no startup**. Depois, código e bibliotecas pegam tracers/meters/loggers globais.
 
----
+### Composability and Extension
+O SDK é feito de peças plugáveis que você **compõe**:
+- **Samplers** (quais traces manter)
+- **SpanProcessors** (o que fazer com spans que começam/terminam)
+- **Exporters** (para onde enviar)
+- **MetricReaders** + **Views** + **Aggregations**
+- **Propagators** (como contexto cruza processos)
+- **Resource** (atributos da entidade)
 
-## Dia 2 — Os sinais de telemetria
+Você pode escrever componentes **customizados** (ex.: um exporter próprio) porque tudo é definido por interfaces.
 
-### Traces (rastros)
-Representam o caminho de uma requisição através de um sistema distribuído.
+### Data Model
+Cada sinal tem um data model definido pela spec e representado no OTLP:
+- **Trace**: Resource → ScopeSpans (InstrumentationScope) → Spans.
+- **Metric**: Resource → ScopeMetrics → Metrics (com data points e temporality/aggregation).
+- **Log**: Resource → ScopeLogs → LogRecords.
+- **InstrumentationScope**: nome/versão do instrumentador (ex.: a lib que criou o tracer). Diferente do Resource (que é o serviço).
 
-- **Trace**: a árvore completa de uma operação. Identificado por um **TraceId** (16 bytes).
-- **Span**: uma unidade de trabalho dentro do trace (ex.: uma chamada HTTP, uma query). Identificado por **SpanId** (8 bytes).
-- Um span tem: nome, timestamps (início/fim), **SpanKind**, status, atributos, eventos, links e referência ao span pai.
-
-**SpanKind** (muito cobrado):
-| Kind | Uso |
-|---|---|
-| `SERVER` | recebe uma requisição remota |
-| `CLIENT` | faz uma requisição remota |
-| `PRODUCER` | envia mensagem para fila/async |
-| `CONSUMER` | processa mensagem de fila/async |
-| `INTERNAL` | operação interna, sem cruzar processo |
-
-**Span Status**: `Unset` (padrão), `Ok`, `Error`.
-
-**Span Events**: um "log estruturado" dentro de um span, com timestamp. **Span Links**: conectam spans de traces diferentes (ex.: batch processing).
-
-### Metrics (métricas)
-Medições numéricas agregadas ao longo do tempo. A especificação define **6 instrumentos** (muito cobrado) — 3 síncronos clássicos + Gauge síncrono + 3 observable (assíncronos):
-
-| Instrumento | Tipo | Monotônico? | Exemplo |
-|---|---|---|---|
-| **Counter** | síncrono | sim (só sobe) | total de requisições |
-| **UpDownCounter** | síncrono | não | itens numa fila |
-| **Histogram** | síncrono | — | distribuição de latência |
-| **Gauge** (síncrono) | síncrono | não | valor medido na hora (ex.: temperatura lida) |
-| **Observable Counter** | assíncrono (callback) | sim | CPU time acumulado |
-| **Observable UpDownCounter** | assíncrono (callback) | não | conexões ativas via callback |
-| **Observable Gauge** | assíncrono (callback) | não | uso de memória atual |
-
-> ⚠️ **Pegadinha:** existe **Gauge síncrono** E **Observable Gauge** — são instrumentos distintos. Use síncrono quando você já tem o valor no código; observable quando precisa ler o valor sob demanda (via callback) no momento da coleta.
-
-Conceitos: **síncrono** (registrado inline no código quando o evento ocorre) vs **assíncrono/observable** (coletado via callback no momento da coleta). **Temporalidade (temporality)**: `cumulative` (acumula desde o início) vs `delta` (só o intervalo). **Aggregation**: como pontos são combinados (sum, last value, histogram).
-
-### Logs
-Registros de eventos com timestamp. No OTel, o **LogRecord** tem campos como: Timestamp, SeverityText/SeverityNumber, Body, Attributes, e **TraceId/SpanId** (correlação com traces). O OTel foca em **integrar** logs existentes, não substituir seu logging framework — ele dá o *bridge* para padronizar e correlacionar.
-
-### Baggage
-Pares chave-valor que **viajam junto com o contexto** através dos serviços (propagados). Útil para passar informação de negócio (ex.: `user.tier=premium`) adiante. **Atenção**: baggage NÃO é adicionado automaticamente aos spans como atributo (por segurança/custo); você faz isso explicitamente se quiser.
-
-### Profiles
-Sinal mais recente do OTel — **continuous profiling**: medições de onde o programa gasta recursos (CPU, memória, alocações) ao longo do tempo, no nível de função/stack trace. Complementa os outros sinais respondendo "**por que** está lento/caro, em qual linha de código". Para a prova: saiba que **profiles é o 4º sinal** (o mais novo), que serve para profiling contínuo de performance, e que se integra ao ecossistema OTel (OTLP, Collector têm suporte emergente). Não é cobrada profundidade de implementação.
-
-### Lab 1.1 — Identificar sinais na prática
-1. Suba o ambiente ([00-ambiente](../00-ambiente/README.md)).
-2. Rode a app `demo-app` e gere tráfego nas rotas `/` e `/erro`.
-3. No Jaeger, abra um trace e identifique: TraceId, SpanId, SpanKind (`SERVER`), o span de erro com Status=Error.
-4. No Prometheus, procure métricas começando com `http_` ou as internas do collector (`otelcol_`).
-5. No stdout do collector (`docker compose logs otel-collector`), observe os logs exportados pelo `debug`.
-
-**Entregável:** anote qual sinal respondeu a quais perguntas (latência? taxa de erro? causa raiz?).
-
----
-
-## Dia 3 — Semantic Conventions e Resource
-
-**Semantic Conventions** são nomes padronizados de atributos para que telemetria de fontes diferentes seja comparável. Sem elas, um time chama `http.method` e outro `httpMethod` — e nada correlaciona.
-
-As convenções cobrem várias **áreas (domains)**: HTTP, Database, Messaging, RPC, Network, Cloud, Kubernetes, FaaS, e **GenAI** (mais recente). Exemplos de atributos padronizados:
-- HTTP: `http.request.method`, `http.response.status_code`, `url.path`
-- DB: `db.system`, `db.statement`
-- Rede: `server.address`, `server.port`, `network.protocol.name`
-- Messaging: `messaging.system`, `messaging.operation`
-
-**Estável vs experimental:** cada convenção tem um status de maturidade. Convenções **stable** não mudam de forma incompatível; **experimental** ainda podem mudar. Por isso o versionamento (schema URL) importa — veja Schema Management abaixo e na Semana 4.
-
-**Resource**: conjunto de atributos que descrevem **a entidade que produz** a telemetria (o "quem/onde"), não a operação. Exemplos:
-- `service.name` (**o mais importante** — obrigatório na prática)
-- `service.version`, `service.namespace`
-- `deployment.environment.name`
-- `host.name`, `k8s.pod.name`, `cloud.provider`, `cloud.region`
-
-Diferença chave para a prova:
-- **Resource attributes** = descrevem a origem (serviço/host/pod). Fixos durante o processo.
-- **Span/metric attributes** = descrevem a operação específica (método HTTP, status).
-
-**Schema URL / Schema Management**: as convenções evoluem; o schema URL versiona qual versão das convenções a telemetria segue, permitindo transformação entre versões (tema aprofundado na Semana 4).
-
-### Lab 1.2 — Resource e atributos
-1. Rode a app definindo recursos:
-   ```powershell
-   $env:OTEL_SERVICE_NAME = "demo-app"
-   $env:OTEL_RESOURCE_ATTRIBUTES = "service.version=1.0.0,deployment.environment.name=lab,service.namespace=otca"
-   opentelemetry-instrument flask run --port 8080
-   ```
-2. Gere tráfego e, no Jaeger, abra um span → aba **Process/Resource**. Confirme `service.version` e `deployment.environment.name`.
-3. Observe nos atributos do span os nomes seguindo semantic conventions (`http.*`, `url.*`).
-
-**Entregável:** liste 5 resource attributes e 5 span attributes que você viu, classificando cada um.
-
----
-
-## Dia 4 — Instrumentação
-
-Três formas (muito cobrado qual é qual):
-
-1. **Manual (code-based)**: você usa a **API** no seu código para criar spans, métricas e logs. Máximo controle, mais trabalho.
-2. **Instrumentation libraries**: bibliotecas prontas que instrumentam frameworks (Flask, Express, gRPC...). Você adiciona a dependência; ela gera spans automaticamente para aquele framework.
-3. **Zero-code / Automatic**: injeta instrumentação **sem alterar o código-fonte** — via agente (ex.: Java agent `-javaagent`), ou wrappers como `opentelemetry-instrument` em Python, ou o **OpenTelemetry Operator** com auto-injection em Kubernetes.
-
-Zero-code é o caminho mais rápido para começar; manual é necessário para telemetria específica de negócio.
-
-### Exemplo de instrumentação manual (Python)
-```python
-from opentelemetry import trace
-tracer = trace.get_tracer("meu.modulo")
-
-with tracer.start_as_current_span("processar-pedido") as span:
-    span.set_attribute("pedido.id", 123)
-    span.add_event("validacao-ok")
-    # ... trabalho ...
-```
-
-### Lab 1.3 — Comparar zero-code x manual
-1. **Zero-code**: rode `opentelemetry-instrument flask run` (como já fez). Veja os spans HTTP gerados sozinhos.
-2. **Manual**: adicione um span custom dentro da rota `/`:
+### Lab 2.1 — API no-op
+1. Num script Python, use **só a API** sem configurar SDK:
    ```python
    from opentelemetry import trace
-   tracer = trace.get_tracer("demo")
-
-   @app.route("/")
-   def hello():
-       with tracer.start_as_current_span("regra-de-negocio") as span:
-           span.set_attribute("cliente.tier", "premium")
-           time.sleep(random.uniform(0.01, 0.3))
-       return "ok\n"
+   tracer = trace.get_tracer("teste")
+   with tracer.start_as_current_span("sem-sdk") as span:
+       print("span válido?", span.get_span_context().is_valid)
    ```
-3. Gere tráfego e no Jaeger veja o span `regra-de-negocio` **aninhado** dentro do span HTTP automático.
+2. Rode. Note que **não quebra** e nada é exportado (TraceId zerado / inválido = no-op).
+3. Agora rode via `opentelemetry-instrument` (SDK configurado) e veja a diferença.
 
-**Entregável:** explique por que o span manual aparece como filho do span automático (dica: context/current span).
-
----
-
-## Dia 5 — Analysis and Outcomes
-
-A telemetria só vale se gera **resultado**. Fluxo mental:
-```
-Instrumentar → Coletar → Correlacionar → Analisar → Agir (alertar, otimizar, corrigir)
-```
-
-Conceitos de outcome:
-- **SLI / SLO / SLA**: indicador, objetivo e acordo de nível de serviço.
-- **RED** (para serviços): **R**ate, **E**rrors, **D**uration.
-- **USE** (para recursos): **U**tilization, **S**aturation, **E**rrors.
-- **Correlação de sinais**: de uma métrica de erro → ao trace → ao log específico. Esse é o grande valor do OTel.
-- **Cardinalidade**: atributos de alta cardinalidade (ex.: `user.id`) explodem o custo de métricas. Decisão de design importante.
-
-### Lab 1.4 — Da anomalia à causa raiz
-1. Gere bastante tráfego incluindo `/erro`.
-2. No Prometheus, encontre uma métrica de contagem de requests e filtre por status de erro (se exposta pela auto-instrumentação).
-3. No Jaeger, filtre traces por `error=true` e abra um deles. Leia o Status e os eventos do span.
-4. (Opcional) No Grafana, adicione Prometheus e Jaeger como data sources e navegue de um painel de métrica para o trace.
-
-**Entregável:** descreva em 3 passos como você iria de "taxa de erro subiu" até "a causa foi X".
+**Entregável:** explique o que muda quando o SDK está presente.
 
 ---
 
-## Dia 6 — Revisão + Quiz
+## Dia 2 — Tracing SDK e a pipeline
+
+Fluxo de um span no SDK:
+```
+Tracer.start_span()
+     │
+     ▼
+  Sampler  ── decide: RecordAndSample / RecordOnly / Drop
+     │
+     ▼
+  Span (ativo)  ──► SpanProcessor.onStart()
+     │ (aplicação adiciona attrs/events)
+     ▼
+  span.end()  ──► SpanProcessor.onEnd()
+                      │
+                      ▼
+                  Exporter ──► OTLP / backend
+```
+
+**Resource** é anexado pelo TracerProvider a todos os spans.
+
+### SpanProcessors (muito cobrado)
+| Processor | Comportamento | Uso |
+|---|---|---|
+| **SimpleSpanProcessor** | exporta **cada span imediatamente** ao terminar | debug/dev; ineficiente em prod |
+| **BatchSpanProcessor** | agrupa spans e exporta em lotes | **padrão de produção** |
+
+BatchSpanProcessor tem parâmetros: `maxQueueSize`, `scheduledDelay`, `maxExportBatchSize`, `exportTimeout`.
+
+### Exporters do SDK
+- **OTLP** (gRPC ou HTTP) — padrão, envia para Collector/backend.
+- **Console/Logging** — stdout, para debug.
+- Exporters específicos de backend (via SDK ou, idealmente, deixe o Collector fazer isso).
+
+### Lab 2.2 — Montar a pipeline manualmente (Python)
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+resource = Resource.create({"service.name": "lab-manual"})
+provider = TracerProvider(resource=resource)
+provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+provider.add_span_processor(
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces"))
+)
+trace.set_tracer_provider(provider)
+
+tracer = trace.get_tracer("lab")
+with tracer.start_as_current_span("op-raiz") as parent:
+    parent.set_attribute("etapa", "inicio")
+    with tracer.start_as_current_span("op-filha"):
+        pass
+provider.shutdown()  # flush
+```
+Rode e confirme: spans no **console** E no **Jaeger** (dois processors, dois destinos).
+
+**Entregável:** troque `BatchSpanProcessor` por `SimpleSpanProcessor` e descreva a diferença de comportamento.
+
+---
+
+## Dia 3 — Sampling (head-based) e decisões
+
+**Head-based sampling** (no SDK): a decisão de amostrar é tomada **no início do trace**, no serviço de origem, e propagada via trace flags. (Tail sampling, decidido no fim e no Collector, é tema da Semana 3.)
+
+Samplers padrão (muito cobrado):
+| Sampler | Comportamento |
+|---|---|
+| `AlwaysOn` | amostra tudo |
+| `AlwaysOff` | não amostra nada |
+| `TraceIdRatioBased` | amostra uma fração (ex.: 10%) baseada no TraceId |
+| `ParentBased` | respeita a decisão do **span pai**; usa um sampler "root" quando não há pai |
+
+**O padrão (default) do SDK é `ParentBased(root=AlwaysOn)`** — ou seja, `parentbased_always_on`, que amostra **100%** dos traces. O `ParentBased` respeita a decisão do pai e, quando não há pai (root span), usa o sampler `root` configurado. É o padrão recomendado porque mantém o trace **consistente** entre serviços: se o pai foi amostrado, o filho também é.
+
+> ⚠️ **Pegadinha:** dizer que "ParentBased" é o padrão, sozinho, é incompleto — ParentBased **exige** um sampler root. O padrão da spec é ParentBased **com root AlwaysOn**. Para amostrar 10%, você compõe `ParentBased(root=TraceIdRatioBased(0.1))` (via env: `OTEL_TRACES_SAMPLER=parentbased_traceidratio` + `OTEL_TRACES_SAMPLER_ARG=0.1`).
+
+Resultado da decisão do sampler:
+- `RECORD_AND_SAMPLE` — grava e exporta (sampled flag = 1)
+- `RECORD_ONLY` — grava localmente mas não exporta
+- `DROP` — não grava
+
+### Lab 2.3 — Sampling
+1. Configure via env var (zero-code):
+   ```powershell
+   $env:OTEL_TRACES_SAMPLER = "parentbased_traceidratio"
+   $env:OTEL_TRACES_SAMPLER_ARG = "0.25"   # 25%
+   ```
+2. Gere ~40 requisições e conte quantos traces aparecem no Jaeger (~25%).
+3. Troque para `always_on` e repita; compare.
+
+**Entregável:** explique por que ParentBased evita "traces quebrados" (spans faltando no meio).
+
+---
+
+## Dia 4 — Metrics SDK
+
+Fluxo:
+```
+Instrumento (Counter/Histogram/...) 
+      │ measurement
+      ▼
+     View  ── (opcional) renomeia, filtra attrs, muda aggregation
+      ▼
+  MetricReader  ── periódico (push) ou on-demand (pull)
+      ▼
+  MetricExporter ──► OTLP / Prometheus
+```
+
+**MeterProvider** (SDK) é configurado com Resource + Readers + Views.
+
+### MetricReader (cobrado)
+- **PeriodicExportingMetricReader**: coleta e exporta a cada intervalo (push, ex.: para OTLP).
+- **Pull/Prometheus**: expõe um endpoint `/metrics` para o Prometheus fazer scrape.
+
+### Views (cobrado)
+Uma **View** customiza um instrumento sem mudar o código:
+- renomear a métrica
+- selecionar/dropar atributos (controle de **cardinalidade**!)
+- trocar a aggregation (ex.: definir buckets de histogram)
+- dropar o instrumento inteiro
+
+### Aggregation e Temporality
+- **Aggregation**: Sum, LastValue, ExplicitBucketHistogram, etc.
+- **Temporality**: `cumulative` (padrão para Prometheus) vs `delta` (comum para alguns backends).
+
+### Lab 2.4 — Métricas custom
+```python
+from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+
+reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://localhost:4318/v1/metrics"),
+    export_interval_millis=5000,
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[reader]))
+
+meter = metrics.get_meter("lab")
+pedidos = meter.create_counter("pedidos_total", unit="1", description="pedidos processados")
+latencia = meter.create_histogram("pedido_duracao_ms", unit="ms")
+
+import time, random
+for _ in range(100):
+    pedidos.add(1, {"tipo": random.choice(["web", "api"])})
+    latencia.record(random.uniform(5, 300), {"tipo": "web"})
+    time.sleep(0.2)
+```
+No Prometheus (`:9090`) procure `pedidos_total` e `pedido_duracao_ms_bucket`.
+
+**Entregável:** descreva como uma View poderia reduzir a cardinalidade removendo o atributo `tipo`.
+
+---
+
+## Dia 5 — Logs SDK e Context Propagation
+
+### Logs no SDK
+- **LoggerProvider** + **LogRecordProcessor** (Simple/Batch) + **LogExporter** (espelha o modelo de traces).
+- A estratégia principal é o **log appender/bridge**: conectar o logging nativo da linguagem ao OTel, anexando automaticamente **TraceId/SpanId** aos logs emitidos dentro de um span → correlação log↔trace.
+
+### Context Propagation (MUITO cobrado)
+**Context** é um container imutável que carrega valores (como o span ativo e o baggage) **dentro do processo**. **Propagators** serializam/desserializam esse contexto **entre processos** (via headers HTTP, por exemplo).
+
+Fluxo distribuído:
+```
+Serviço A (span ativo)
+   │ inject() → escreve headers (ex.: traceparent)
+   ▼ HTTP request com headers
+Serviço B
+   │ extract() → lê headers → recria o SpanContext remoto
+   ▼
+   novo span filho continua o MESMO trace
+```
+
+**Propagadores (formatos) — saber diferenciar:**
+| Propagador | Formato / headers |
+|---|---|
+| **W3C TraceContext** | `traceparent`, `tracestate` — **padrão do OTel** |
+| **W3C Baggage** | header `baggage` |
+| **B3** | headers `b3` (ou `X-B3-*`) — comum em Zipkin |
+| **Jaeger** | header `uber-trace-id` |
+
+O padrão do OTel é **TraceContext + Baggage**. Você pode compor múltiplos propagadores (ex.: para interoperar com um sistema B3 legado) via **CompositePropagator**.
+
+**SpanContext** (o que é propagado): TraceId, SpanId, **TraceFlags** (inclui o sampled bit), **TraceState**, e flag `remote`. É **imutável** e serializável — diferente do Span (que é o objeto mutável local).
+
+### Lab 2.5 — Propagação entre dois serviços
+1. Suba dois Flask (`A` na 8080 chamando `B` na 8081), ambos com `opentelemetry-instrument`.
+2. Faça `A` chamar `B` via `requests` (a instrumentation lib injeta `traceparent` automaticamente).
+3. No Jaeger, confirme **um único trace** com spans de A **e** B.
+4. Force `OTEL_PROPAGATORS=b3` nos dois e repita; depois teste `tracecontext,baggage`.
+
+**Entregável:** mostre o header `traceparent` capturado e explique seus campos (version-traceid-spanid-flags).
+
+> 📎 Aprofunde em [recursos/apendice-tecnico.md](../recursos/apendice-tecnico.md): seção 1 (OTLP, portas 4317/4318 e paths `/v1/*`) e seção 2 (anatomia byte a byte do `traceparent`).
+
+---
+
+## Dia 6 — Configuration, Agents, Revisão + Quiz
+
+### Configuration (cobrado)
+Duas formas principais:
+1. **Variáveis de ambiente** (padronizadas pela spec): portáteis entre linguagens.
+   | Env var | Função |
+   |---|---|
+   | `OTEL_SERVICE_NAME` | define `service.name` |
+   | `OTEL_RESOURCE_ATTRIBUTES` | resource attrs extras |
+   | `OTEL_EXPORTER_OTLP_ENDPOINT` | destino OTLP |
+   | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` / `http/protobuf` |
+   | `OTEL_TRACES_SAMPLER` / `..._ARG` | sampler e parâmetro |
+   | `OTEL_PROPAGATORS` | lista de propagadores |
+   | `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` | exporters |
+   | `OTEL_SDK_DISABLED` | desliga o SDK |
+2. **Programática** (no código, no startup) — mais controle.
+3. **Declarative Configuration** (file-based, YAML) — formato emergente para configurar o SDK via arquivo, análogo ao do Collector.
+
+### Agents
+"Agent" aqui = o processo/mecanismo que faz instrumentação **zero-code**:
+- **Java agent** (`-javaagent:opentelemetry-javaagent.jar`): injeta bytecode em runtime, sem recompilar.
+- **Python** `opentelemetry-instrument`, **Node** `--require @opentelemetry/auto-instrumentations-node/register`.
+- **OpenTelemetry Operator** (Kubernetes): injeta o agent/SDK automaticamente nos pods via annotations.
+
+Diferencie **agent (zero-code, lado da aplicação)** do **Collector agent** (um deployment do Collector perto da app — tema da Semana 3). Não confunda.
+
+### Gestão e tipos de agentes (saiba que existem)
+- **OpAMP** (Open Agent Management Protocol): protocolo para **gerenciar agentes/collectors remotamente** — enviar configuração, atualizar, monitorar saúde e versão de uma frota de agentes de forma centralizada. É a resposta do OTel para "como opero centenas de collectors/agents".
+- **eBPF instrumentation**: instrumentação a nível de kernel, zero-code, que captura telemetria (ex.: spans de rede/HTTP) **sem tocar na aplicação nem na linguagem**. Útil para linguagens difíceis de instrumentar.
+- **OpenTelemetry Operator** (Kubernetes): além de injetar instrumentação, também **gerencia o deployment do Collector** no cluster.
+
+> Para a prova: associe **OpAMP = gestão remota de agentes**; **eBPF = instrumentação no kernel sem alterar a app**.
 
 ### Resumo-relâmpago
-- Observabilidade = entender o interno pelo externo; OTel = padrão aberto, vendor-neutral.
-- **Sinais: traces, metrics, logs, profiles.** Baggage NÃO é sinal (é propagação de contexto).
-- Span tem Kind, Status, atributos, eventos, links.
-- 6 instrumentos de métrica: Counter, UpDownCounter, Histogram, Gauge (síncrono), Observable Counter, Observable UpDownCounter, Observable Gauge.
-- Resource = quem produz; attributes de span = o que aconteceu.
-- Semantic Conventions padronizam nomes.
-- Instrumentação: manual, library, zero-code.
+- API = contrato (no-op sem SDK); SDK = implementação.
+- Providers: Tracer/Meter/Logger. Configurados 1x no startup.
+- Pipeline de trace: Sampler → Span → SpanProcessor (Simple/Batch) → Exporter.
+- Samplers: AlwaysOn/Off, TraceIdRatioBased, ParentBased. **Padrão = ParentBased(root=AlwaysOn) = 100%.**
+- Métricas: Instrumento → View → MetricReader (periodic/pull) → Exporter.
+- Context propagation: inject/extract; W3C TraceContext é padrão (traceparent).
+- SpanContext (imutável) carrega TraceId/SpanId/TraceFlags/TraceState.
 
-### Quiz — Semana 1 (responda sem olhar; gabarito ao final)
+### Quiz — Semana 2
 
-1. Qual a diferença entre monitoramento e observabilidade?
-2. Quais são os sinais de telemetria do OpenTelemetry? O baggage é um deles?
-3. Que identificadores tem um trace e um span, e qual o tamanho de cada?
-4. Para uma requisição HTTP recebida pelo servidor, qual é o `SpanKind`?
-5. Qual instrumento usar para "número de itens numa fila" (pode subir e descer)?
-6. Qual a diferença entre um instrumento síncrono e um observable?
-7. O que são Semantic Conventions e por que importam?
-8. `service.name` é um atributo de span ou de resource?
-9. Cite as três formas de instrumentação e dê um exemplo de zero-code.
-10. O baggage é adicionado automaticamente como atributo nos spans? Por quê?
-11. O que é cardinalidade e por que é um problema em métricas?
-12. Explique o acrônimo RED.
+1. Se a aplicação não configura o SDK, o que acontece com a telemetria gerada via API?
+2. Por que bibliotecas devem depender só da API, não do SDK?
+3. Qual a diferença entre SimpleSpanProcessor e BatchSpanProcessor? Qual usar em produção?
+4. O que o Sampler `ParentBased` resolve?
+5. Descreva o resultado possível da decisão de um sampler.
+6. Diferencie `inject` e `extract` na propagação de contexto.
+7. Qual é o propagador padrão do OpenTelemetry e qual header ele usa?
+8. O que uma View pode fazer com uma métrica?
+9. Qual MetricReader você usa para expor um endpoint que o Prometheus faz scrape?
+10. O que é o InstrumentationScope e como difere do Resource?
+11. Cite 3 variáveis de ambiente padronizadas e o que fazem.
+12. O que carrega um SpanContext e por que ele é imutável?
+13. Head-based vs tail-based sampling: onde cada um decide?
+14. O que é um "agent" de instrumentação zero-code? Dê um exemplo em Java.
 
 <details>
-<summary><b>Gabarito Semana 1</b></summary>
+<summary><b>Gabarito Semana 2</b></summary>
 
-1. Monitoramento responde perguntas pré-definidas (dashboards/alertas conhecidos); observabilidade permite investigar perguntas novas a partir da telemetria.
-2. Os sinais são **traces, metrics, logs e profiles**. **Baggage NÃO é sinal** — é um mecanismo de propagação de contexto.
-3. Trace → TraceId (16 bytes); Span → SpanId (8 bytes).
-4. `SERVER`.
-5. `UpDownCounter`.
-6. Síncrono é registrado inline no código quando o evento ocorre; observable é coletado via callback no momento da leitura (bom para valores de estado, como memória).
-7. Nomes padronizados de atributos para que telemetrias de fontes distintas sejam comparáveis/correlacionáveis.
-8. De **resource** (descreve a entidade que produz a telemetria).
-9. Manual (API no código), instrumentation library (dependência por framework), zero-code/automatic (ex.: `opentelemetry-instrument`, Java agent, Operator com auto-injection).
-10. Não. Por custo e segurança — você deve copiar explicitamente do baggage para atributos se desejar.
-11. Número de combinações distintas de valores de atributos. Alta cardinalidade (ex.: `user.id` em métrica) explode armazenamento e custo.
-12. Rate (taxa de requisições), Errors (taxa de erros), Duration (latência).
+1. A API opera como **no-op**: nada é gerado/exportado, mas o código não quebra.
+2. Para não forçar overhead/telemetria em quem consome a lib; a aplicação final decide se e como configurar o SDK.
+3. Simple exporta cada span imediatamente (bom p/ debug, caro); Batch agrupa e exporta em lotes. **Produção = Batch.**
+4. Mantém a decisão de amostragem **consistente** ao longo do trace: se o pai foi amostrado, o filho também — evita traces incompletos.
+5. `RECORD_AND_SAMPLE`, `RECORD_ONLY` ou `DROP`.
+6. `inject` escreve o contexto atual em um carrier (ex.: headers HTTP) no serviço de origem; `extract` lê o carrier no serviço de destino e reconstrói o SpanContext remoto.
+7. **W3C TraceContext**, header `traceparent` (+ `tracestate`); baggage usa o header `baggage`.
+8. Renomear, filtrar/dropar atributos (cardinalidade), mudar a aggregation (ex.: buckets) ou dropar o instrumento.
+9. Um reader do tipo pull/Prometheus (expõe `/metrics`).
+10. Scope = nome/versão de quem instrumentou (a lib/tracer); Resource = a entidade/serviço que produz a telemetria.
+11. Ex.: `OTEL_SERVICE_NAME` (service.name), `OTEL_EXPORTER_OTLP_ENDPOINT` (destino), `OTEL_TRACES_SAMPLER` (sampler), `OTEL_PROPAGATORS` (propagadores). (quaisquer 3)
+12. TraceId, SpanId, TraceFlags (sampled), TraceState e flag remote. Imutável para poder ser propagado com segurança entre contextos/processos.
+13. Head-based decide no início, no SDK do serviço de origem; tail-based decide no fim, tipicamente no Collector (tail_sampling).
+14. Mecanismo que injeta instrumentação sem alterar o código-fonte. Em Java: o `-javaagent:opentelemetry-javaagent.jar`.
 
 </details>
 
-Próxima 👉 [Semana 2 — API & SDK](../semana-2-api-sdk/README.md)
+Próxima 👉 [Semana 3 — Collector](../semana-3-collector/README.md)
