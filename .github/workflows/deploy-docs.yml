@@ -4,8 +4,9 @@ on:
   push:
     branches: [main, master]
     paths:
-      - "otca-study-plan/**"
+      - "**/*.md"
       - "mkdocs.yml"
+      - "requirements.txt"
       - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
@@ -14,7 +15,6 @@ permissions:
   pages: write
   id-token: write
 
-# Evita deploys concorrentes
 concurrency:
   group: pages
   cancel-in-progress: true
