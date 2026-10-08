@@ -1,302 +1,148 @@
-# Semana 3 — The OpenTelemetry Collector (26%)
+# Plano de Estudos OTCA — OpenTelemetry Certified Associate (4 semanas)
 
-> Objetivo: dominar a **anatomia do Collector**, ler e escrever `config.yaml`, entender **deployment** (agent vs gateway), **scaling**, **pipelines** e **transformação de dados** (OTTL). Segundo domínio mais pesado.
+Guia completo de 4 semanas para preparar e passar na certificação **OpenTelemetry Certified Associate (OTCA)**, da Linux Foundation / CNCF.
 
-> 💡 Você já tem um mapa arquitetural detalhado em `../../ok.txt`. Use-o como material de aprofundamento. Esta semana foca no que **cai na prova**.
+---
 
-### Competências cobradas
+## 1. Sobre o exame
+
+| Item | Detalhe |
+|---|---|
+| Nome | OpenTelemetry Certified Associate (OTCA) |
+| Autoridade | Linux Foundation / CNCF |
+| Formato | Online, proctored (supervisionado remotamente) |
+| Duração | 90 minutos |
+| Questões | ~60, múltipla escolha e múltipla seleção |
+| Nota de aprovação | ~75% |
+| Validade | ~3 anos |
+| Nível | Associate (fundamentos — não exige programação pesada) |
+
+> O exame é **vendor-neutral** e **conceitual**. Não é um exame hands-on (sem terminal como no CKA/CKAD), mas as questões cobram entendimento prático de configuração, data model, sinais, pipelines e propagação de contexto. Os labs deste plano existem para **fixar os conceitos**, não porque o exame exige digitação.
+
+Fontes: [Linux Foundation OTCA](https://training.linuxfoundation.org/certification/opentelemetry-certified-associate-otca/), [CNCF OTCA](https://www.cncf.io/training/certification/otca/), [opentelemetry.io blog](https://opentelemetry.io/blog/2025/otca-for-newcomers-and-advanced-users/). Detalhes de formato (duração/questões/nota) conforme guias públicos de preparação; confirme os números atuais no checkout oficial, pois podem mudar. *Conteúdo resumido/parafraseado para conformidade com licenciamento.*
+
+---
+
+## 2. Domínios e pesos
+
+| # | Domínio | Peso | Semana |
+|---|---|---|---|
+| 1 | Fundamentals of Observability | **18%** | Semana 1 |
+| 2 | The OpenTelemetry API and SDK | **46%** | Semana 2 |
+| 3 | The OpenTelemetry Collector | **26%** | Semana 3 |
+| 4 | Maintaining and Debugging Observability Pipelines | **10%** | Semana 4 |
+
+> O domínio 2 (API e SDK) vale quase metade da prova. Dedique a Semana 2 inteira a ele e revise com carinho.
+
+### Competências por domínio
+
+**1. Fundamentals of Observability (18%)**
+- Telemetry Data — sinais: traces, metrics, logs, profiles (baggage é propagação de contexto, não sinal)
+- Semantic Conventions
+- Instrumentation (manual, automática, zero-code)
+- Analysis and Outcomes
+
+**2. The OpenTelemetry API and SDK (46%)**
+- Data Model
+- Composability and Extension
+- Configuration
+- Signals (Tracing, Metric, Log)
+- SDK Pipelines
+- Context Propagation
+- Agents
+
+**3. The OpenTelemetry Collector (26%)**
 - Configuration
 - Deployment
 - Scaling
 - Pipelines
 - Transforming Data
 
-### Cronograma da semana
-| Dia | Tema | Lab |
-|---|---|---|
-| 1 | Anatomia: 5 componentes + service + distribuições/OCB | Lab 3.1 |
-| 2 | Configuration: ler/escrever config.yaml | Lab 3.2 |
-| 3 | Processors essenciais (batch, memory_limiter, etc.) | Lab 3.3 |
-| 4 | Connectors + Transforming Data (OTTL) | Lab 3.4 |
-| 5 | Deployment (agent/gateway) + Scaling + Segurança | Lab 3.5 |
-| 6 | Revisão + Quiz | Quiz |
+**4. Maintaining and Debugging Observability Pipelines (10%)**
+- Context Propagation
+- Debugging Pipelines
+- Error Handling
+- Schema Management
 
 ---
 
-## Dia 1 — Anatomia do Collector
+## 3. Estrutura do material
 
-O Collector é um binário que **recebe → processa → exporta** telemetria, de forma vendor-neutral.
-
-### Distribuições (distributions)
-Uma distribuição = um binário do Collector com um conjunto específico de componentes.
-| Distribuição | Conteúdo |
-|---|---|
-| **Core** | componentes estáveis essenciais (OTLP, batch, memory_limiter...) — conservadora e pequena |
-| **Contrib** | Core + centenas de componentes da comunidade (todos os receivers/processors/exporters) |
-| **k8s** | enxuta, focada em cenários Kubernetes |
-| **Custom (via OCB)** | só os componentes que você precisa |
-
-Use `otel/opentelemetry-collector-contrib` nos labs (tem tudo).
-
-### OpenTelemetry Collector Builder (OCB)
-O **OCB** (`ocb` / `builder`) gera um **binário customizado** do Collector a partir de um **manifesto** (YAML) que lista exatamente os receivers/processors/exporters/connectors/extensions desejados. Benefícios cobrados:
-- **Menor footprint** (binário menor) e **menor superfície de ataque** (só o necessário).
-- Permite incluir **componentes próprios/privados** não presentes no Contrib.
-- É assim que distros vendor (ex.: Jaeger v2, distros de observabilidade) são montadas.
-
-> Para a prova: saiba **o que é o OCB e por que usar** (customizar/enxugar a distribuição), não a sintaxe do manifesto.
-
-### Os 5 tipos de componente
-| Componente | Papel | No fluxo de dados? |
-|---|---|---|
-| **Receiver** | entrada (push ou scrape) | sim |
-| **Processor** | transforma/filtra/agrupa | sim |
-| **Exporter** | saída para backends | sim |
-| **Connector** | liga a saída de um pipeline à entrada de outro (é exporter + receiver) | sim |
-| **Extension** | capacidades fora do fluxo (health, auth, pprof, zpages, storage) | **não** |
-
-### A regra de ouro: `service`
-Declarar um componente **não o ativa**. Ele só funciona se for referenciado em `service.pipelines`. É o erro conceitual mais cobrado.
-
-```yaml
-service:
-  extensions: [health_check]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlp]
-  telemetry:   # observabilidade do PRÓPRIO collector
-    logs: {level: info}
-    metrics: {level: detailed}
+```
+otca-study-plan/
+├── README.md                      <- você está aqui
+├── PLANO-28-DIAS.md               <- checklist diário consolidado
+├── 00-ambiente/
+│   ├── README.md                  <- setup docker-compose dos labs
+│   ├── docker-compose.yaml        <- pronto para `docker compose up -d`
+│   ├── collector-config.yaml
+│   ├── prometheus.yaml
+│   ├── app.py                     <- app de exemplo instrumentada
+│   └── grafana/provisioning/      <- data sources Prometheus + Jaeger automáticos
+├── semana-1-fundamentos/README.md
+├── semana-2-api-sdk/README.md
+├── semana-3-collector/README.md
+├── semana-4-pipelines-revisao/README.md
+├── simulados/
+│   ├── simulado-1.md              <- 30 questões
+│   ├── simulado-2.md              <- 30 questões (múltipla seleção)
+│   ├── simulado-3.md              <- 30 questões (pegadinhas + tópicos avançados)
+│   └── gabaritos.md               <- gabaritos comentados dos 3
+└── recursos/
+    ├── README.md                  <- cheatsheets, glossário, links
+    ├── flashcards.md              <- ~70 cards de revisão espaçada
+    └── apendice-tecnico.md        <- detalhes finos (OTLP, traceparent, OTTL, métricas internas)
 ```
 
-### Lab 3.1 — Explorar o Collector rodando
-1. Com o ambiente de pé, abra `http://localhost:55679/debug/servicez` (zPages) e veja as pipelines ativas.
-2. `docker compose logs otel-collector` — ache a linha que lista pipelines/components na inicialização.
-3. Acesse `http://localhost:8888/metrics` e veja as métricas internas (`otelcol_receiver_accepted_spans`, `otelcol_exporter_sent_spans`, etc.).
+---
 
-**Entregável:** liste os receivers, processors e exporters ativos no seu collector.
+## 4. Cronograma de 4 semanas
+
+Planejamento sugerido: **~1h30 a 2h30 por dia**, 5–6 dias por semana. Ajuste conforme sua rotina.
+
+| Semana | Foco | Carga | Peso na prova |
+|---|---|---|---|
+| 1 | Fundamentos de observabilidade | ~10h | 18% |
+| 2 | API & SDK (o coração da prova) | ~14h | 46% |
+| 3 | Collector | ~12h | 26% |
+| 4 | Pipelines, debugging, revisão e simulados | ~10h | 10% + revisão geral |
+
+### Ritmo diário sugerido (template)
+- **20–30 min** — leitura da teoria do dia
+- **40–60 min** — laboratório prático
+- **15–20 min** — quiz / flashcards do dia
+- **10 min** — anotar dúvidas num "caderno de erros"
 
 ---
 
-## Dia 2 — Configuration
+## 5. Como usar este material
 
-Estrutura canônica do `config.yaml`:
-```yaml
-receivers:    # definições (não ativam nada sozinhas)
-processors:
-exporters:
-connectors:
-extensions:
-service:      # o que de fato liga tudo
-  extensions: [...]
-  pipelines:
-    traces:   { receivers, processors, exporters }
-    metrics:  { ... }
-    logs:     { ... }
-  telemetry: { ... }
-```
+1. Siga o [PLANO-28-DIAS.md](PLANO-28-DIAS.md) — é o checklist diário que amarra tudo.
+2. Comece pelo [setup de ambiente](00-ambiente/README.md): `docker compose up -d` (os arquivos já estão prontos).
+3. Siga as semanas na ordem. Cada semana tem: **teoria → labs → quiz**.
+4. Use os [flashcards](recursos/flashcards.md) para revisão espaçada (refaça os errados a cada 2 dias).
+5. Mantenha um **caderno de erros**: toda questão que errar, anote o porquê (template nos gabaritos).
+6. Faça os [simulados](simulados/simulado-1.md) na Semana 4, cronometrados. O simulado 3 foca nas pegadinhas.
+7. Revise o [glossário e cheatsheets](recursos/README.md) nos últimos dias.
 
-Pontos cobrados:
-- Nomes com `tipo/nome` para **múltiplas instâncias**: `otlp/jaeger`, `otlp/backend2`.
-- Ordem dos **processors importa**: eles rodam na sequência listada. `memory_limiter` **primeiro**, `batch` **por último** (antes do exporter) é a convenção.
-- Um mesmo receiver/exporter pode ser usado em **vários pipelines**.
-- Variáveis de ambiente: `${env:MINHA_VAR}`.
-
-### Lab 3.2 — Editar a config
-1. No `collector-config.yaml`, adicione um segundo exporter de debug só para logs e um pipeline de logs separado.
-2. Adicione o processor `attributes` para inserir um atributo fixo:
-   ```yaml
-   processors:
-     attributes/env:
-       actions:
-         - key: deployment.environment.name
-           value: lab
-           action: insert
-   ```
-3. Referencie `attributes/env` no pipeline de traces. `docker compose restart otel-collector`.
-4. Gere tráfego e confirme no Jaeger o novo atributo nos spans.
-
-**Entregável:** mostre o diff da sua config e explique por que `attributes/env` só teve efeito após entrar no `service`.
+### Critério de "pronto para o exame"
+- [ ] Acertar **≥ 85%** nos três simulados (margem acima dos 75% reais)
+- [ ] Explicar com suas palavras: trace vs span vs span context
+- [ ] Montar de cabeça um pipeline do Collector (receiver → processor → exporter)
+- [ ] Diferenciar os propagadores (W3C TraceContext, Baggage, B3, Jaeger) e os 3 tipos de instrumentação
+- [ ] Saber ler um `config.yaml` do Collector e dizer o que cada bloco faz
+- [ ] Acertar as pegadinhas: baggage ≠ sinal; sampler default = parentbased_always_on; Gauge síncrono ≠ Observable Gauge
 
 ---
 
-## Dia 3 — Processors essenciais
+## 6. Pré-requisitos de software (para os labs)
 
-| Processor | O que faz | Cobrado? |
-|---|---|---|
-| **memory_limiter** | protege o Collector de OOM, aplica backpressure | ⭐ muito |
-| **batch** | agrupa dados para eficiência de rede | ⭐ muito |
-| **attributes** | insert/update/delete/hash de atributos | ⭐ |
-| **resource** | manipula resource attributes | ⭐ |
-| **filter** | descarta telemetria por condição | ⭐ |
-| **transform** | OTTL — transformações ricas | ⭐ (dia 4) |
-| **k8sattributes** | enriquece com metadata do Kubernetes | ⭐ |
-| **resourcedetection** | detecta ambiente (cloud/host) | |
-| **tail_sampling** | amostragem baseada no trace completo | ⭐ |
-| **redaction** | remove/mascara dados sensíveis (PII) | |
+- Docker + Docker Compose
+- Uma linguagem à sua escolha para instrumentação manual (Python é a mais rápida de demonstrar; exemplos em Python inclusos)
+- `curl` e um editor de texto
 
-**Ordem recomendada** num pipeline: `memory_limiter` → (enriquecimento: `k8sattributes`, `resource`, `attributes`) → (transform/filter/sampling) → `batch` → exporter.
-
-**tail_sampling** (diferença-chave vs head-based do SDK): o Collector **espera o trace terminar** e decide com base no trace inteiro (ex.: manter se tem erro, ou latência > 2s). Precisa de todos os spans do trace no mesmo Collector → impacta o design de scaling (dia 5).
-
-### Lab 3.3 — memory_limiter, filter e batch
-1. Adicione `filter` para dropar spans de health check:
-   ```yaml
-   processors:
-     filter/health:
-       error_mode: ignore
-       traces:
-         span:
-           - 'attributes["http.route"] == "/health"'
-   ```
-2. Ajuste o `batch` (`send_batch_size`, `timeout`) e observe no `:8888/metrics` o efeito em `otelcol_exporter_sent_spans`.
-3. Reduza o `limit_mib` do memory_limiter e observe logs de recusa sob carga.
-
-**Entregável:** explique o que o memory_limiter faz quando atinge o limite (dica: recusa dados e sinaliza backpressure).
+Veja detalhes em [00-ambiente/README.md](00-ambiente/README.md).
 
 ---
 
-## Dia 4 — Connectors e Transforming Data (OTTL)
-
-### Connectors
-Um **connector** é exporter de um pipeline **e** receiver de outro — liga pipelines e pode **mudar o tipo de sinal**.
-| Connector | Faz |
-|---|---|
-| **spanmetrics** | gera **métricas** (RED) a partir de **traces** |
-| **servicegraph** | gera métricas de grafo de serviços a partir de traces |
-| **count** | conta spans/logs/métricas e emite como métrica |
-| **routing** | roteia dados para pipelines diferentes por condição |
-| **forward** | encaminha entre pipelines |
-| **failover** | fallback entre exporters/pipelines |
-
-Exemplo mental: `traces → spanmetrics → metrics → Prometheus` (deriva latência/erros sem instrumentar métricas na app).
-
-### OTTL — OpenTelemetry Transformation Language
-Linguagem usada pelos processors `transform` e `filter` (e outros) para manipular telemetria por **statements** e **conditions**.
-
-Funções/estrutura (reconhecer na prova):
-```yaml
-transform:
-  trace_statements:
-    - context: span
-      statements:
-        - set(attributes["env"], "prod") where attributes["env"] == nil
-        - replace_pattern(attributes["url.path"], "/user/[0-9]+", "/user/{id}")
-        - delete_key(attributes, "senha")
-        - keep_keys(attributes, ["http.method", "http.route"])
-```
-Operações comuns: `set`, `delete_key`, `keep_keys`, `replace_pattern`, `limit`, `truncate_all`, condições com `where`.
-
-> 📎 Os **contextos OTTL** por sinal (`span`, `spanevent`, `metric`, `datapoint`, `log`, `resource`, `scope`) estão na seção 3 de [recursos/apendice-tecnico.md](../recursos/apendice-tecnico.md). Saber em qual contexto um statement roda é cobrado.
-
-### Lab 3.4 — spanmetrics + OTTL
-1. Adicione o connector `spanmetrics`:
-   ```yaml
-   connectors:
-     spanmetrics:
-   service:
-     pipelines:
-       traces:
-         receivers: [otlp]
-         processors: [memory_limiter, batch]
-         exporters: [otlp/jaeger, spanmetrics]
-       metrics:
-         receivers: [otlp, spanmetrics]
-         processors: [batch]
-         exporters: [prometheus]
-   ```
-2. Gere tráfego e no Prometheus procure as métricas derivadas dos traces — tipicamente `calls_total` (contador de chamadas) e o histograma de duração exposto como `duration_milliseconds_bucket` / `_count` / `_sum`.
-3. Adicione um `transform` que normaliza um atributo com `replace_pattern` e confirme no Jaeger.
-
-**Entregável:** explique como o spanmetrics "muda o sinal" de trace para métrica e por que é útil.
-
----
-
-## Dia 5 — Deployment e Scaling
-
-### Padrões de deployment
-| Padrão | Onde roda | Função |
-|---|---|---|
-| **Agent** | junto da app (sidecar, DaemonSet, no host) | coleta local, host metrics, logs, baixa latência |
-| **Gateway** | serviço central (deployment com várias réplicas) | agregação, sampling, routing, egress único, segurança |
-| **Sem Collector** | SDK exporta direto ao backend | simples, mas acopla app ao backend |
-
-Arquitetura comum: `App → Agent (local) → Gateway (central) → Backends`.
-
-### Scaling (cobrado)
-- O **gateway escala horizontalmente** (mais réplicas atrás de um load balancer).
-- **Cuidado com tail_sampling e spanmetrics**: precisam de **todos os spans de um trace no mesmo collector**. Com múltiplas réplicas, use um **load balancing exporter** por `traceID` numa camada de collectors antes dos que fazem tail sampling.
-  ```
-  Agents → Collector (loadbalancing exporter, roteia por traceID) → Collectors (tail_sampling) → Backend
-  ```
-- Dimensione com `memory_limiter`, réplicas e recursos (CPU/mem). Monitore as métricas internas (`:8888`) para ajustar.
-
-### Segurança no Collector (cobrado em Deployment)
-- **TLS / mTLS**: receivers e exporters OTLP suportam `tls:` (certificado, chave, CA). mTLS = ambos os lados se autenticam com certificado. Em dev usa-se `tls: {insecure: true}`.
-- **Autenticação via extensions**: `basicauth`, `bearertokenauth`, `oauth2clientauth`, `headerssetter`, auth de cloud (AWS/Azure). O auth é referenciado pelo receiver (lado servidor) ou exporter (lado cliente).
-- **Redaction / PII**: processor `redaction` e OTTL (`delete_key`) para remover dados sensíveis antes de exportar.
-- Boas práticas: não logar segredos, usar `${env:...}` para credenciais, limitar quem fala com o gateway.
-
-### Lab 3.5 — Dois níveis de collector
-1. Adicione um segundo serviço `otel-gateway` no compose, com sua própria config.
-2. No `otel-collector` (agent), troque o exporter de traces para `otlp` apontando para `otel-gateway:4317`.
-3. No `otel-gateway`, receba OTLP e exporte para o Jaeger.
-4. Gere tráfego e confirme o fluxo `app → agent → gateway → jaeger` (use o `debug` exporter em cada nível para rastrear).
-
-**Entregável:** desenhe o fluxo e explique por que tail_sampling ficaria no gateway, não no agent.
-
----
-
-## Dia 6 — Revisão + Quiz
-
-### Resumo-relâmpago
-- 5 componentes: receiver, processor, exporter, connector, extension (extension fica fora do fluxo).
-- Nada funciona até estar no `service.pipelines`.
-- Ordem de processors importa: memory_limiter primeiro, batch por último.
-- Connector muda/deriva sinais (spanmetrics: trace→metric).
-- OTTL: transform/filter com set/delete_key/keep_keys/replace_pattern + where.
-- Deployment: agent (local) vs gateway (central). Gateway escala horizontalmente.
-- tail_sampling/spanmetrics exigem todos os spans do trace no mesmo collector → loadbalancing por traceID.
-- Distribuições: Core/Contrib/k8s/custom. **OCB** gera binário customizado (menor, mais seguro).
-- Segurança: TLS/mTLS nos OTLP; auth via extensions; redaction para PII.
-
-### Quiz — Semana 3
-
-1. Quais são os 5 tipos de componente do Collector? Qual fica fora do fluxo de dados?
-2. Declarei um processor mas ele não faz efeito. Qual o erro mais provável?
-3. Em que ordem colocar `memory_limiter` e `batch` no pipeline, e por quê?
-4. O que faz um connector? Dê um exemplo que muda o tipo de sinal.
-5. O que é OTTL e em quais processors aparece?
-6. Diferencie deployment agent e gateway.
-7. Por que tail_sampling complica o scaling horizontal, e como resolver?
-8. Como usar o mesmo exporter em dois pipelines diferentes?
-9. O que o `memory_limiter` faz ao atingir o limite?
-10. Diferença entre as distribuições Core e Contrib?
-11. Onde o Collector expõe suas próprias métricas internas e health?
-12. O que o processor `k8sattributes` adiciona e por que é útil?
-13. O que é o OCB e por que criar uma distribuição customizada?
-14. Diferença entre TLS e mTLS no Collector?
-
-<details>
-<summary><b>Gabarito Semana 3</b></summary>
-
-1. Receiver, processor, exporter, connector, extension. **Extension** fica fora do fluxo de dados.
-2. Ele não foi referenciado no `service.pipelines` — declarar não ativa.
-3. `memory_limiter` **primeiro** (proteger memória/aplicar backpressure antes de processar) e `batch` **por último** (agrupar logo antes de exportar).
-4. Liga a saída de um pipeline à entrada de outro (é exporter+receiver). Ex.: `spanmetrics` transforma traces em métricas.
-5. OpenTelemetry Transformation Language; aparece em `transform` e `filter` (entre outros), via statements/conditions.
-6. Agent roda junto da aplicação/host (coleta local); gateway é central/compartilhado (agregação, sampling, routing, egress).
-7. tail_sampling precisa de todos os spans de um trace juntos; com múltiplas réplicas, roteie por `traceID` com um loadbalancing exporter antes da camada que faz tail sampling.
-8. Referencie o mesmo exporter em `exporters:` de ambos os pipelines no `service`.
-9. Recusa/descarta dados de entrada e aplica backpressure para evitar OOM.
-10. Core = conjunto estável/essencial; Contrib = Core + componentes da comunidade (muito mais receivers/processors/exporters).
-11. Métricas internas em `:8888/metrics`; health via extension `health_check` (`:13133`); diagnóstico via `zpages`.
-12. Metadata do Kubernetes (namespace, pod, node, container, labels) à telemetria, correlacionando dados ao contexto do cluster.
-13. OpenTelemetry Collector Builder — gera um binário customizado só com os componentes necessários (menor footprint, menor superfície de ataque, inclui componentes próprios).
-14. TLS: só o servidor apresenta certificado (conexão criptografada); mTLS: cliente e servidor se autenticam mutuamente com certificado.
-
-</details>
-
-Próxima 👉 [Semana 4 — Pipelines & Revisão](../semana-4-pipelines-revisao/README.md)
+Bons estudos. Comece por aqui 👉 [Semana 1 — Fundamentos](semana-1-fundamentos/README.md)
