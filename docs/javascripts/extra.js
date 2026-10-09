@@ -1,8 +1,15 @@
 const outdatedWeekPath = /\/(semana-(?:1-fundamentos|2-api-sdk|3-collector|4-pipelines-revisao)\/)README\.md$/;
+const outdatedPlanPath = /\/PLANO-28-DIAS\.md$/;
 
 if (outdatedWeekPath.test(window.location.pathname)) {
   window.location.replace(
     window.location.pathname.replace(/README\.md$/, '') +
+      window.location.search +
+      window.location.hash
+  );
+} else if (outdatedPlanPath.test(window.location.pathname)) {
+  window.location.replace(
+    window.location.pathname.replace(/PLANO-28-DIAS\.md$/, 'PLANO-28-DIAS/') +
       window.location.search +
       window.location.hash
   );
