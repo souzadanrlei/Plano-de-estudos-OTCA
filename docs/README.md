@@ -11,7 +11,7 @@
       </p>
       <div class="hero-actions">
         <a href="semana-1-fundamentos/" class="md-button md-button--primary">Começar a estudar · Dia 1</a>
-        <a href="PLANO-28-DIAS.md" class="md-button">Ver cronograma completo</a>
+        <a href="PLANO-28-DIAS/" class="md-button">Ver cronograma completo</a>
       </div>
       <div class="badge-row">
         <span class="badge">4 semanas</span>
