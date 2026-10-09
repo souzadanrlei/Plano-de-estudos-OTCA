@@ -10,7 +10,7 @@
         valida conceitos com labs reais e reforça os pontos mais exigidos na prova.
       </p>
       <div class="hero-actions">
-        <a href="semana-1-fundamentos/README.md" class="md-button md-button--primary">Começar pela semana 1</a>
+        <a href="semana-1-fundamentos/" class="md-button md-button--primary">Começar a estudar · Dia 1</a>
         <a href="PLANO-28-DIAS.md" class="md-button">Ver cronograma completo</a>
       </div>
       <div class="badge-row">
@@ -38,22 +38,22 @@ Se a dúvida é “por onde começar?”, siga esta ordem do primeiro ao último
 <div class="feature-grid">
   <div class="feature-card" data-animate="fade-up">
     <div class="feature-icon">1️⃣</div>
-    <h3><a href="semana-1-fundamentos/README.md">Semana 1 — Fundamentos</a></h3>
+    <h3><a href="semana-1-fundamentos/">Semana 1 — Fundamentos</a></h3>
     <p>Entenda observabilidade, sinais, contexto, spans e os princípios que sustentam o resto da trilha.</p>
   </div>
   <div class="feature-card" data-animate="fade-up">
     <div class="feature-icon">2️⃣</div>
-    <h3><a href="semana-2-api-sdk/README.md">Semana 2 — API & SDK</a></h3>
+    <h3><a href="semana-2-api-sdk/">Semana 2 — API & SDK</a></h3>
     <p>Veja como a API, SDK, samplers, propagadores e métricas funcionam na prática.</p>
   </div>
   <div class="feature-card" data-animate="fade-up">
     <div class="feature-icon">3️⃣</div>
-    <h3><a href="semana-3-collector/README.md">Semana 3 — Collector</a></h3>
+    <h3><a href="semana-3-collector/">Semana 3 — Collector</a></h3>
     <p>Aprenda pipelines, processors, exporters, deploy e arquitetura para coleta e transformação de dados.</p>
   </div>
   <div class="feature-card" data-animate="fade-up">
     <div class="feature-icon">4️⃣</div>
-    <h3><a href="semana-4-pipelines-revisao/README.md">Semana 4 — Revisão e pipelines</a></h3>
+    <h3><a href="semana-4-pipelines-revisao/">Semana 4 — Revisão e pipelines</a></h3>
     <p>Feche a trilha com revisão, troubleshooting, comparações de arquitetura e simulados.</p>
   </div>
 </div>
